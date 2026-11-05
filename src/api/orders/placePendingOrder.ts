@@ -4,6 +4,11 @@
  * POST /api/v2/orders/pending
  */
 import { apiClient } from '../apiClient';
+import {
+  BIN_ACTION_PLACE_PENDING,
+  encodePendingOrderSubType,
+  executeBinaryOrderAsHttpResponse,
+} from '../binaryTcpOrderClient';
 import { StaleBrokerSessionError } from '../brokerApi';
 import { assertTradeSide } from '../../domain/tradeSide';
 import { createTradingApiError } from '../tradingErrors';
@@ -175,12 +180,31 @@ export const placePendingOrder = async (
 
       try {
         createRequestStarted = true;
-        response = await apiClient('/orders/pending', {
-          method: 'POST',
-          headers: { 'Idempotency-Key': clientOrderId },
-          body: serializedBody,
-          replayAfterAuthRefresh: false,
-        });
+        const fieldsRecord = fields as Record<string, unknown>;
+        const { side: binSide, subType: binSubType } = encodePendingOrderSubType(
+          String(fieldsRecord.type ?? ''),
+        );
+        response =
+          (await executeBinaryOrderAsHttpResponse({
+            action: BIN_ACTION_PLACE_PENDING,
+            side: binSide,
+            subType: binSubType,
+            login: fieldsRecord.account_login as number | string,
+            volume: fieldsRecord.volume as number | string,
+            price: fieldsRecord.price as number | string,
+            stopLimitPrice: fieldsRecord.price_limit as number | string | undefined,
+            sl: fieldsRecord.sl as number | string | null | undefined,
+            tp: fieldsRecord.tp as number | string | null | undefined,
+            expiration: (fieldsRecord.expiry as number | null | undefined) ?? 0,
+            symbol: canonicalSymbol,
+            clientOrderId,
+          })) ??
+          (await apiClient('/orders/pending', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': clientOrderId },
+            body: serializedBody,
+            replayAfterAuthRefresh: false,
+          }));
         const raw = await response.json().catch(() => ({}));
         assertOrderSessionCurrent();
         const inner = unwrap(raw);

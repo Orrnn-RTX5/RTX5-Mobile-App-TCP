@@ -1,6 +1,7 @@
 import { isPublicBrokerContextCurrent, type PublicBrokerContext } from '../state/publicBrokerContext';
 import { timedFetch } from '../utils/apiLatency';
 import { redactSensitiveString } from '../utils/securityRedaction';
+import { switchTcpBroker } from './broker';
 
 export type GuestSession = Readonly<{
   accessToken: string; refreshToken: string; expiresAt: string; accountLogin: string;
@@ -82,6 +83,10 @@ export async function authenticateGuest(context: PublicBrokerContext, operation:
   let timedOut = false;
   const timeout = setTimeout(() => { timedOut = true; abort(); }, 15000);
   try {
+    await switchTcpBroker(
+      { brokerId: context.brokerId, name: context.name, tcpAddr: context.endpoints.tcpAddr },
+      controller.signal,
+    );
     const response = await timedFetch(`${context.extendedApiBase}/auth/${operation}`, {
       method: 'POST', credentials: 'omit', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Broker-ID': context.brokerId },

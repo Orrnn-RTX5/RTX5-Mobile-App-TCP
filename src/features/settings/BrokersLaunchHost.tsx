@@ -22,6 +22,7 @@ import {
 } from './BrokersScreen/selectedBrokerHealthGate';
 import { warmDemoAccountForm } from './registerScreenPreload';
 import { selectGuestBrokerById } from '../../services/selectGuestBroker';
+import { switchTcpBroker } from '../../api/broker';
 import { openAuthFlow } from '../trade/authFlowState';
 import { scheduleAfterVisualFrame } from '../../utils/afterVisualFrame';
 
@@ -138,22 +139,24 @@ export function BrokersLaunchHost() {
       );
     };
 
-    void selectedBrokerHealthGate.run({
-      serverUrl: broker.serverUrl,
-      onAvailable: () => {
-        if (!isSelectedPickerStillActive()) return;
-        void selectGuestBrokerById(broker.brokerId, isSelectedPickerStillActive).then(selected => {
-          if (!selected || !isSelectedPickerStillActive()) return;
-          openAuthFlow(undefined, undefined, '/settings/brokers');
-          // The pending Accounts -> Brokers push owns this cover. Hiding it
-          // here would cancel a fast tap's push and leave Quotes underneath
-          // the form. The focused Brokers route removes its own cover.
-        }).catch(error => Alert.alert('Broker unavailable', error.message));
-      },
-      onUnavailable: () => {
-        if (!isSelectedPickerStillActive()) return;
-        Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
-      },
+    void switchTcpBroker({ brokerId: broker.brokerId, name: broker.name }).finally(() => {
+      void selectedBrokerHealthGate.run({
+        serverUrl: broker.serverUrl,
+        onAvailable: () => {
+          if (!isSelectedPickerStillActive()) return;
+          void selectGuestBrokerById(broker.brokerId, isSelectedPickerStillActive).then(selected => {
+            if (!selected || !isSelectedPickerStillActive()) return;
+            openAuthFlow(undefined, undefined, '/settings/brokers');
+            // The pending Accounts -> Brokers push owns this cover. Hiding it
+            // here would cancel a fast tap's push and leave Quotes underneath
+            // the form. The focused Brokers route removes its own cover.
+          }).catch(error => Alert.alert('Broker unavailable', error.message));
+        },
+        onUnavailable: () => {
+          if (!isSelectedPickerStillActive()) return;
+          Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
+        },
+      });
     });
   }, [router]);
 

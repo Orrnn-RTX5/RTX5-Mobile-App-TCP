@@ -4,6 +4,13 @@ import {
   type ActiveBrokerSessionOwnerStamp,
 } from '../../state/activeBrokerSession';
 import { apiClient } from '../apiClient';
+import {
+  BIN_ACTION_CANCEL_PENDING,
+  BIN_ACTION_MODIFY_PENDING,
+  BIN_FLAG_CLEAR_SL,
+  BIN_FLAG_CLEAR_TP,
+  executeBinaryOrderAsHttpResponse,
+} from '../binaryTcpOrderClient';
 import { StaleBrokerSessionError } from '../brokerApi';
 import { assertActivePendingProtectionAllowed } from '../sltpCapabilityGuard';
 import { createUuidV4 } from '../tradeIdempotency';
@@ -549,20 +556,46 @@ export const modifyPendingOrder = async (
   let primaryError: unknown;
   let accepted202 = false;
 
-  const sendModify = () => apiClient(
-    `/orders/pending/${ticket.path}?account_login=${encodeURIComponent(owner.accountLogin)}`,
-    {
-      method: 'PUT',
-      headers: {
-        accept: 'application/json',
-        'Content-Type': 'application/json',
-        'Idempotency-Key': clientOrderId,
+  const sendModify = async (): Promise<Response> => {
+    let modFlags = 0;
+    if ('sl' in fields && (fields.sl === null || Number(fields.sl) === 0)) {
+      modFlags |= BIN_FLAG_CLEAR_SL;
+    }
+    if ('tp' in fields && (fields.tp === null || Number(fields.tp) === 0)) {
+      modFlags |= BIN_FLAG_CLEAR_TP;
+    }
+    const binResp = await executeBinaryOrderAsHttpResponse(
+      {
+        action: BIN_ACTION_MODIFY_PENDING,
+        flags: modFlags,
+        login: owner.accountLogin,
+        ticket: ticket.numeric,
+        price: fields.price as number | string | undefined,
+        stopLimitPrice: fields.price_limit as number | string | undefined,
+        sl: fields.sl as number | string | null | undefined,
+        tp: fields.tp as number | string | null | undefined,
+        expiration: (fields.expiry as number | null | undefined) ?? 0,
+        symbol: previous?.symbol ?? '',
+        clientOrderId,
       },
-      body: serializedBody,
-      signal: options.signal,
-      timeoutMs,
-    },
-  );
+      { signal: options.signal, timeoutMs },
+    );
+    if (binResp) return binResp;
+    return apiClient(
+      `/orders/pending/${ticket.path}?account_login=${encodeURIComponent(owner.accountLogin)}`,
+      {
+        method: 'PUT',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': clientOrderId,
+        },
+        body: serializedBody,
+        signal: options.signal,
+        timeoutMs,
+      },
+    );
+  };
 
   try {
     let response: Response | null = null;
@@ -709,20 +742,32 @@ export const cancelPendingOrder = async (
   });
   let primaryError: unknown;
 
-  const sendCancel = () => apiClient(
-    `/orders/pending/${ticket.path}?account_login=${encodeURIComponent(owner.accountLogin)}`,
-    {
-      method: 'DELETE',
-      headers: {
-        accept: 'application/json',
-        'Idempotency-Key': clientOrderId,
-        'Content-Type': 'application/json',
+  const sendCancel = async (): Promise<Response> => {
+    const binResp = await executeBinaryOrderAsHttpResponse(
+      {
+        action: BIN_ACTION_CANCEL_PENDING,
+        login: owner.accountLogin,
+        ticket: ticket.numeric,
+        clientOrderId,
       },
-      body: serializedBody,
-      signal: options.signal,
-      timeoutMs,
-    },
-  );
+      { signal: options.signal, timeoutMs },
+    );
+    if (binResp) return binResp;
+    return apiClient(
+      `/orders/pending/${ticket.path}?account_login=${encodeURIComponent(owner.accountLogin)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          accept: 'application/json',
+          'Idempotency-Key': clientOrderId,
+          'Content-Type': 'application/json',
+        },
+        body: serializedBody,
+        signal: options.signal,
+        timeoutMs,
+      },
+    );
+  };
 
   try {
     let response: Response | null = null;

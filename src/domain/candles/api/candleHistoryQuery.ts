@@ -42,11 +42,11 @@ const readCandleHistoryEnv = (
   const path =
     (env && typeof env.EXPO_PUBLIC_CANDLE_HISTORY_PATH === 'string'
       ? env.EXPO_PUBLIC_CANDLE_HISTORY_PATH
-      : process.env.EXPO_PUBLIC_CANDLE_HISTORY_PATH) ?? '';
+      : process.env.EXPO_PUBLIC_CANDLE_HISTORY_PATH) || 'candles';
   const queryStyle =
     (env && typeof env.EXPO_PUBLIC_CANDLE_HISTORY_QUERY_STYLE === 'string'
       ? env.EXPO_PUBLIC_CANDLE_HISTORY_QUERY_STYLE
-      : process.env.EXPO_PUBLIC_CANDLE_HISTORY_QUERY_STYLE) ?? '';
+      : process.env.EXPO_PUBLIC_CANDLE_HISTORY_QUERY_STYLE) || 'timeframeLimit';
   return { path, queryStyle };
 };
 

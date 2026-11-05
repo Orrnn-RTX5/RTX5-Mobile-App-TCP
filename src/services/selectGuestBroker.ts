@@ -1,5 +1,5 @@
 import type { ValidatedBrokerServer } from '../api/broker';
-import { getBrokerDirectoryForBroker } from '../api/broker';
+import { getBrokerDirectoryForBroker, switchTcpBroker } from '../api/broker';
 import { createPublicBrokerContext, setPublicBrokerContext } from '../state/publicBrokerContext';
 import { useUserPreferences } from '../state/userPreferences';
 import { captureActiveBrokerSession } from '../state/activeBrokerSession';
@@ -15,6 +15,7 @@ export async function selectGuestBrokerById(brokerId: string, isCurrent: () => b
 export async function selectGuestBroker(record: ValidatedBrokerServer) {
   createPublicBrokerContext(record); // validate before discarding the previous selection
   ++selection;
+  await switchTcpBroker(record);
   // Public selection cancels the previous auth form and its requests. Only a
   // successful, verified session commit may replace the authenticated account.
   setPublicBrokerContext(record);

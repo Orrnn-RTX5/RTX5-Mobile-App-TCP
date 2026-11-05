@@ -1,4 +1,4 @@
-﻿import { setPublicBrokerContext } from '../../../state/publicBrokerContext';
+import { setPublicBrokerContext } from '../../../state/publicBrokerContext';
 import { publicBrokerFixture } from '../../../testFixtures/publicBroker';
 import assert from 'node:assert/strict';
 import test from 'node:test';

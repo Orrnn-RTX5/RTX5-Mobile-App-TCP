@@ -22,10 +22,9 @@
       "backgroundColor": "#2d2c31"
     },
     "updates": {
-      "enabled": true,
+      "enabled": false,
       "checkAutomatically": "NEVER",
-      "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/092a58db-dea9-469a-a383-f27300598812"
+      "fallbackToCacheTimeout": 0
     },
     "ios": {
       "bundleIdentifier": "com.rtx5.trading",
@@ -80,30 +79,18 @@
           ]
         }
       ],
-      [
-        "expo-updates",
-        {
-          "username": "yoforex"
-        }
-      ],
       "./withAdiRegistration.js",
       "./withNetworkSecurityConfig.js",
       "./withAndroidLauncherIcons.js",
+      "./withRtx5BinaryTcpBridge.js",
       [
         "expo-build-properties",
         {
           "android": {
-            "enableMinifyInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableMinifyInReleaseBuilds": false,
+            "enableShrinkResourcesInReleaseBuilds": false,
+            "useLegacyPackaging": true
           }
-        }
-      ],
-      [
-        "@sentry/react-native/expo",
-        {
-          "url": "https://sentry.io/",
-          "project": "rtx5",
-          "organization": "yoforex-ts"
         }
       ]
     ],
@@ -111,10 +98,7 @@
       "router": {
         "origin": false
       },
-      "sentryDsn": "https://3dab2efca640377d8759f471e3452523@o4511568602464256.ingest.us.sentry.io/4511568799531008",
-      "eas": {
-        "projectId": "092a58db-dea9-469a-a383-f27300598812"
-      }
+      "sentryDsn": ""
     },
     "owner": "yoforex-organisation"
   }

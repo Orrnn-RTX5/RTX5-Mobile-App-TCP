@@ -1,4 +1,4 @@
-﻿import { captureActiveBrokerSession } from '../../state/activeBrokerSession';
+import { captureActiveBrokerSession } from '../../state/activeBrokerSession';
 import { useUserPreferences } from '../../state/userPreferences';
 import { openAuthFlow } from './authFlowState';
 import { shouldRequestTradingAuth, type TradeAuthIntent } from './tradeAuthGate';

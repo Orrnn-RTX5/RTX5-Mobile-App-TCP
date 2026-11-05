@@ -6,6 +6,7 @@ import {
 } from './brokerRouting';
 import { timedFetch } from '../utils/apiLatency';
 import { loginRequestBody, positiveAccountLogin } from './guestAuthentication';
+import { switchTcpBroker } from './broker';
 import {
   fingerprintMarketDataHost,
   recordMarketDataEvent,
@@ -212,6 +213,7 @@ export const loginAPI = async (
     }
     const apiBaseUrl = buildBrokerApiBaseUrl(options.serverUrl);
     apiHostFingerprint = fingerprintMarketDataHost(apiBaseUrl);
+    await switchTcpBroker({ brokerId: credentials.broker_id }, controller.signal);
 
     response = await timedFetch(`${apiBaseUrl}/auth/login`, {
       method: 'POST',

@@ -42,7 +42,7 @@ import { useBrokerDirectory } from '../../../query/broker';
 import { selectGuestBroker } from '../../../services/selectGuestBroker';
 import { getPublicBrokerContext } from '../../../state/publicBrokerContext';
 import { openAuthFlow } from '../../trade/authFlowState';
-import type { ValidatedBrokerServer } from '../../../api/broker';
+import { switchTcpBroker, type ValidatedBrokerServer } from '../../../api/broker';
 import {
   brokersLaunchController,
   hideBrokersLaunch,
@@ -305,17 +305,20 @@ function BrokerDirectoryScreen({ isScreenFocused, onSelectBroker, onBack, select
       return;
     }
     const selection = toBrokerDetailLaunchSelection(broker);
-    void selectedBrokerHealthGate.run({
-      serverUrl: broker.serverUrl,
-      onAvailable: () => {
-        if (!brokerPickerFocusedRef.current) return;
-        // Open the broker account form after validating the selected server.
-        openBrokerDetail(selection);
-      },
-      onUnavailable: () => {
-        if (!brokerPickerFocusedRef.current) return;
-        Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
-      },
+    const matchingRecord = brokerDirectory?.selectableServers.find(row => row.broker_id === broker.brokerId);
+    void switchTcpBroker(matchingRecord ?? { brokerId: broker.brokerId, name: broker.name }).finally(() => {
+      void selectedBrokerHealthGate.run({
+        serverUrl: broker.serverUrl,
+        onAvailable: () => {
+          if (!brokerPickerFocusedRef.current) return;
+          // Open the broker account form after validating the selected server.
+          openBrokerDetail(selection);
+        },
+        onUnavailable: () => {
+          if (!brokerPickerFocusedRef.current) return;
+          Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
+        },
+      });
     });
   };
 

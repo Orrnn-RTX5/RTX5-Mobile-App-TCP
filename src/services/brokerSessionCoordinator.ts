@@ -4,7 +4,7 @@ import { resolveBrokerSessionRestoreWrites } from './brokerSessionRestorePlan';
 import { scheduleAfterFirstFrame } from '../utils/startupScheduler';
 import { scheduleAfterVisualFrame } from '../utils/afterVisualFrame';
 import { brokerApi } from '../api/brokerApi';
-import { getBrokerDirectory, getBrokerDirectoryForBroker } from '../api/broker';
+import { getBrokerDirectory, getBrokerDirectoryForBroker, switchTcpBroker } from '../api/broker';
 import { createPublicBrokerContext, type PublicBrokerContext } from '../state/publicBrokerContext';
 import { validateLoginBrokerContext } from './validatedLoginBrokerContext';
 import { dismissAuthFlow } from '../features/trade/authFlowState';
@@ -521,6 +521,7 @@ export const restoreBrokerSession = (): Promise<BrokerSessionRestoreResult> =>
         try { const verified = createPublicBrokerContext(row); return verified.apiBase === manifest!.apiBase && verified.feedWsBase === manifest!.feedWsBase && verified.feedStatusUrl === manifest!.feedStatusUrl; } catch { return false; }
       });
       if (matches.length !== 1) return failClosed('Stored broker is not uniquely supported by the directory.');
+      await switchTcpBroker(matches[0]);
       const verified = createPublicBrokerContext(matches[0]);
       if (verified.apiBase !== manifest.apiBase || verified.feedWsBase !== manifest.feedWsBase || verified.feedStatusUrl !== manifest.feedStatusUrl || (verified.endpoints.tradeWsBase ?? '') !== (manifest.tradeWsBase ?? '')) return failClosed('Stored broker endpoints no longer match the directory.');
       const nextManifest = createActiveBrokerSessionManifest({ ...manifest, brokerId: verified.brokerId, configVersion: verified.configVersion });

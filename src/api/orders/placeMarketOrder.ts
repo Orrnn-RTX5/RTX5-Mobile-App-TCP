@@ -16,6 +16,13 @@
  *   captured-owner reconciliation below re-reads GET /positions/{login}.
  */
 import { apiClient } from '../apiClient';
+import {
+  BIN_ACTION_PLACE_MARKET,
+  BIN_SIDE_BUY,
+  BIN_SIDE_SELL,
+  BIN_SUBTYPE_MARKET,
+  executeBinaryOrderAsHttpResponse,
+} from '../binaryTcpOrderClient';
 import { StaleBrokerSessionError } from '../brokerApi';
 import { assertTradeSide } from '../../domain/tradeSide';
 import { createTradingApiError, getTradingErrorCode, TradingApiError } from '../tradingErrors';
@@ -357,13 +364,28 @@ const placeMarketOrderAttempt = async (
         reconciliationHandle?.markTransportStarted();
       }
       createRequestStarted = true;
-      response = await apiClient('/orders', {
-        method: 'POST',
-        // Optional mirror of the body id; the gateway ignores this header.
-        headers: { 'Idempotency-Key': clientOrderId },
-        body: wireBody,
-        timeoutMs: MARKET_ORDER_HTTP_TIMEOUT_MS,
-      });
+      response =
+        (await executeBinaryOrderAsHttpResponse(
+          {
+            action: BIN_ACTION_PLACE_MARKET,
+            side: requestedSide === 'sell' ? BIN_SIDE_SELL : BIN_SIDE_BUY,
+            subType: BIN_SUBTYPE_MARKET,
+            login: loginInt,
+            volume: orderBody.volume as string,
+            sl: orderBody.sl as string | undefined,
+            tp: orderBody.tp as string | undefined,
+            symbol: canonicalSymbol,
+            clientOrderId,
+          },
+          { timeoutMs: MARKET_ORDER_HTTP_TIMEOUT_MS },
+        )) ??
+        (await apiClient('/orders', {
+          method: 'POST',
+          // Optional mirror of the body id; the gateway ignores this header.
+          headers: { 'Idempotency-Key': clientOrderId },
+          body: wireBody,
+          timeoutMs: MARKET_ORDER_HTTP_TIMEOUT_MS,
+        }));
       let raw: any;
       try {
         raw = await response.json();

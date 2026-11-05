@@ -21,8 +21,12 @@ const normalizeLogoUri = (value: string | null | undefined, base?: string): stri
     const url = raw.startsWith('//')
       ? new URL(`https:${raw}`)
       : new URL(raw, base ? `${base.replace(/\/+$/, '')}/` : undefined);
-    if (url.protocol === 'http:') url.protocol = 'https:';
-    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return '';
+    const isLoopback =
+      url.hostname === '127.0.0.1' ||
+      url.hostname === 'localhost' ||
+      url.hostname === '10.0.2.2';
+    if (url.protocol === 'http:' && !isLoopback) url.protocol = 'https:';
+    if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) || !url.hostname || url.username || url.password) return '';
     return url.toString();
   } catch {
     return '';

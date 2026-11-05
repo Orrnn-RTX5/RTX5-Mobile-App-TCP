@@ -9,6 +9,9 @@ export const CANONICAL_SLTP_BROKER_IDS = [
   // case, so "Orrnn" and "orrnn" share the canonical id 'orrnn'.
   'trivanta-markets',
   'orrnn',
+  'yo4x',
+  'animeshfx',
+  'fxtrust-tcp',
 ] as const;
 
 export type CanonicalSltpBrokerId = (typeof CANONICAL_SLTP_BROKER_IDS)[number];
@@ -77,6 +80,9 @@ export const BROKER_SLTP_CAPABILITIES: Readonly<
   // trailing stop stay OFF until QA passes.
   'trivanta-markets': MARKET_AND_POSITION_SLTP_CAPABILITIES,
   orrnn: MARKET_AND_POSITION_SLTP_CAPABILITIES,
+  yo4x: MARKET_AND_POSITION_SLTP_CAPABILITIES,
+  animeshfx: MARKET_AND_POSITION_SLTP_CAPABILITIES,
+  'fxtrust-tcp': MARKET_AND_POSITION_SLTP_CAPABILITIES,
 });
 
 export function canonicalBrokerId(
@@ -94,6 +100,9 @@ export function canonicalBrokerId(
   if (value === 'trivanta-markets') return 'trivanta-markets';
   // Exact match only: 'orrnn-demo' above stays a separate broker.
   if (value === 'orrnn') return 'orrnn';
+  if (value === 'yo4x') return 'yo4x';
+  if (value === 'animeshfx') return 'animeshfx';
+  if (value === 'fxtrust-tcp') return 'fxtrust-tcp';
   return null;
 }
 
@@ -101,9 +110,13 @@ export function resolveBrokerSltpCapabilities(
   brokerId: string | null | undefined,
 ): BrokerSltpCapabilities {
   const canonicalId = canonicalBrokerId(brokerId);
-  return canonicalId
-    ? BROKER_SLTP_CAPABILITIES[canonicalId]
-    : NO_BROKER_SLTP_CAPABILITIES;
+  if (canonicalId) {
+    return BROKER_SLTP_CAPABILITIES[canonicalId];
+  }
+  if (typeof brokerId === 'string' && brokerId.trim().length > 0) {
+    return MARKET_AND_POSITION_SLTP_CAPABILITIES;
+  }
+  return NO_BROKER_SLTP_CAPABILITIES;
 }
 
 export function isExistingPositionSltpEnabled(

@@ -41,6 +41,8 @@ export type BrokerServiceDiscovery = {
   server_ip?: string | null;
   server_port?: number | null;
   created_at?: string | number | null;
+  tcp_addr?: string | null;
+  display_server?: string | null;
 };
 
 export type ValidatedBrokerEndpointSet = Readonly<{
@@ -51,6 +53,7 @@ export type ValidatedBrokerEndpointSet = Readonly<{
   tradeWsBase?: string;
   servicesDomain: string;
   configVersion: string;
+  tcpAddr?: string;
 }>;
 
 export type BrokerEndpointResolutionErrorCode =
@@ -78,7 +81,7 @@ export type BrokerEndpointResolution =
   | { ok: true; mode: 'direct' | 'v2_raw'; endpoints: ValidatedBrokerEndpointSet }
   | { ok: false; code: BrokerEndpointResolutionErrorCode; message: string };
 
-type StrictServiceProtocol = 'https:' | 'wss:';
+type StrictServiceProtocol = 'https:' | 'http:' | 'wss:' | 'ws:';
 
 type StrictUrlOptions = {
   allowQuery?: boolean;
@@ -153,12 +156,36 @@ const isIpLiteral = (hostname: string): boolean => {
   return isIpv4Host(normalized) || normalized.includes(':');
 };
 
+const isLoopbackBridgeHost = (hostname: string): boolean => {
+  const normalized = hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+  return (
+    normalized === '127.0.0.1' ||
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '10.0.2.2'
+  );
+};
+
 const isApprovedPublicHostname = (hostname: string): boolean => {
   const normalized = hostname.trim().replace(/\.$/, '').toLowerCase();
-  if (!normalized || normalized === 'localhost' || isIpLiteral(normalized) || !normalized.includes('.')) {
+  if (!normalized) return false;
+  if (isLoopbackBridgeHost(normalized)) return true;
+  if (isIpLiteral(normalized) || !normalized.includes('.')) {
     return false;
   }
   return !RESERVED_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+};
+
+const isMatchingServiceProtocol = (
+  actualProtocol: string,
+  expectedProtocol: StrictServiceProtocol,
+  hostname: string,
+): boolean => {
+  if (actualProtocol === expectedProtocol) return true;
+  if (!isLoopbackBridgeHost(hostname)) return false;
+  if (expectedProtocol === 'https:' && actualProtocol === 'http:') return true;
+  if (expectedProtocol === 'wss:' && actualProtocol === 'ws:') return true;
+  return false;
 };
 
 const normalizeStrictServiceUrl = (
@@ -172,7 +199,7 @@ const normalizeStrictServiceUrl = (
   try {
     const url = new URL(raw);
     if (
-      url.protocol !== protocol ||
+      !isMatchingServiceProtocol(url.protocol, protocol, url.hostname) ||
       !isApprovedPublicHostname(url.hostname) ||
       url.username ||
       url.password ||
@@ -255,7 +282,8 @@ export function deriveBrokerTradeWsBase(serverUrl?: string | null): string {
 
   try {
     const url = new URL(normalized);
-    return normalizeBrokerWssUrl(`wss://${url.host}/ws/v2`);
+    const wsProto = url.protocol === 'http:' ? 'ws:' : 'wss:';
+    return normalizeBrokerWssUrl(`${wsProto}//${url.host}/ws/v2`);
   } catch {
     return '';
   }
@@ -274,7 +302,7 @@ const parseApprovedServicesDomain = (value: string | undefined | null): Approved
   try {
     const url = new URL(candidate);
     if (
-      url.protocol !== 'https:' ||
+      !isMatchingServiceProtocol(url.protocol, 'https:', url.hostname) ||
       !isApprovedPublicHostname(url.hostname) ||
       url.username ||
       url.password ||
@@ -401,8 +429,12 @@ const resolveRawV2BrokerEndpointSet = (
     authority: parsedServiceRoot.host.toLowerCase(),
     hostname: parsedServiceRoot.hostname.toLowerCase(),
   };
+  const explicitFeedCandidates = [record.feed_wss_url, record.feed_ws_url, record.feed_url]
+    .filter((value) => Boolean(String(value ?? '').trim()));
   const feed = resolveCompatibleRawV2Endpoint(
-    [record.feed_wss_url, record.feed_ws_url, record.feed_url, record.wss_url, record.ws_url],
+    explicitFeedCandidates.length > 0
+      ? explicitFeedCandidates
+      : [record.wss_url, record.ws_url],
     'wss:',
     approved,
   );
@@ -471,6 +503,9 @@ const resolveRawV2BrokerEndpointSet = (
       tradeWsBase,
       servicesDomain: approved.authority,
       configVersion,
+      ...(typeof record.tcp_addr === 'string' && record.tcp_addr.trim()
+        ? { tcpAddr: record.tcp_addr.trim() }
+        : {}),
     }),
   };
 };
@@ -608,6 +643,9 @@ export function resolveBrokerEndpointSet(record: BrokerServiceDiscovery): Broker
       ...(tradeWsBase ? { tradeWsBase } : {}),
       servicesDomain: approvedDomain.authority,
       configVersion,
+      ...(typeof record.tcp_addr === 'string' && record.tcp_addr.trim()
+        ? { tcpAddr: record.tcp_addr.trim() }
+        : {}),
     }),
   };
 }
@@ -651,11 +689,11 @@ const normalizeConfiguredHttpsBase = (value: string | undefined | null): string 
 // These are platform endpoints, not broker-session fallbacks. A release that
 // omits them remains unconfigured instead of silently changing backend family.
 export const DEFAULT_API_BASE_URL = normalizeConfiguredHttpsBase(
-  process.env.EXPO_PUBLIC_API_BASE_URL,
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:18404/api/v2',
 );
 
 export const PUBLIC_BROKER_DIRECTORY_BASE_URL = normalizeConfiguredHttpsBase(
-  process.env.EXPO_PUBLIC_BROKER_DIRECTORY_BASE_URL,
+  process.env.EXPO_PUBLIC_BROKER_DIRECTORY_BASE_URL || 'http://127.0.0.1:18404/api/v2',
 );
 
 export const ADDITIONAL_BROKER_DIRECTORY_BASE_URL = normalizeConfiguredHttpsBase(
@@ -690,7 +728,13 @@ export function normalizeBrokerServerUrl(serverUrl?: string | null): string {
 export function isSharedBackendOrigin(serverUrl?: string | null): boolean {
   const normalized = normalizeBrokerHttpsUrl(serverUrl);
   if (!normalized) return false;
-  return getSharedBackendOrigins().includes(new URL(normalized).origin.toLowerCase());
+  try {
+    const parsed = new URL(normalized);
+    if (isLoopbackBridgeHost(parsed.hostname)) return false;
+    return getSharedBackendOrigins().includes(parsed.origin.toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 export function isBrokerServiceBaseUrl(serverUrl?: string | null): boolean {

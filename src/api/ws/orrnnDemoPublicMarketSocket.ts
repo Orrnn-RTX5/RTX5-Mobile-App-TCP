@@ -1,4 +1,4 @@
-﻿import { AppState, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { createFeedWebSocket } from './feedWebSocket';
 import { useUserPreferences } from '../../state/userPreferences';
 import { getPublicBrokerContext } from '../../state/publicBrokerContext';

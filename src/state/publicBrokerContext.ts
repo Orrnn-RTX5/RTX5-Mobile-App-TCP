@@ -29,9 +29,10 @@ export function createPublicBrokerContext(record: PublicBrokerRecord): PublicBro
   if (record.protocol_mode && !['gateway-v2', 'bridge'].includes(record.protocol_mode)) throw new Error('Unsupported public market protocol.');
   if (record.protocol_mode === 'bridge') throw new Error('Bridge provider has not been verified for guest market data.');
   const root = new URL(endpoints.apiBase);
+  const wsProto = root.protocol === 'http:' ? 'ws:' : 'wss:';
   return Object.freeze({ brokerId: endpoints.brokerId, name: record.broker_name || endpoints.brokerId,
     apiBase: endpoints.apiBase, extendedApiBase, feedWsBase: endpoints.feedWsBase,
-    candleWsBase: `wss://${root.host}/ws/v2`, feedStatusUrl: endpoints.feedStatusUrl,
+    candleWsBase: `${wsProto}//${root.host}/ws/v2`, feedStatusUrl: endpoints.feedStatusUrl,
     feedBrokerId: record.feed_broker_id?.trim() || endpoints.brokerId, protocolMode: 'gateway-v2',
     configVersion: endpoints.configVersion, generation: generation + 1,
     cacheNamespace: `public-market:${encodeURIComponent(endpoints.brokerId)}:${generation + 1}`, endpoints });

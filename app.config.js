@@ -1,11 +1,6 @@
 const appJson = require('./app.json');
 const { execSync } = require('node:child_process');
 
-const TRUE_VALUES = new Set(['1', 'true', 'yes']);
-
-const isNativeOtaDisabled = TRUE_VALUES.has(
-  String(process.env.EXPO_PUBLIC_DISABLE_OTA_UPDATES ?? '').trim().toLowerCase()
-);
 const forcedExpoVersion = String(process.env.RTX5_FORCE_EXPO_VERSION ?? '').trim();
 const forcedRuntimeVersion = String(process.env.RTX5_FORCE_RUNTIME_VERSION ?? '').trim();
 
@@ -66,36 +61,26 @@ module.exports = ({ config }) => {
     extra: {
       ...(config.extra ?? {}),
       ...(appJson.expo.extra ?? {}),
-      sentryDsn:
-        process.env.EXPO_PUBLIC_SENTRY_DSN ??
-        config.extra?.sentryDsn ??
-        appJson.expo.extra?.sentryDsn ??
-        '',
-      appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? config.extra?.appEnv ?? 'local',
+      sentryDsn: '',
+      appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? config.extra?.appEnv ?? 'production',
       apiBaseUrl:
         process.env.EXPO_PUBLIC_API_BASE_URL ??
         config.extra?.apiBaseUrl ??
-        'https://superadmin-prod.orrnn.com/api/v2',
+        'http://127.0.0.1:18404/api/v2',
       brokerDirectoryBaseUrl:
         process.env.EXPO_PUBLIC_BROKER_DIRECTORY_BASE_URL ??
         config.extra?.brokerDirectoryBaseUrl ??
-        'https://superadmin-prod.orrnn.com/api/v2',
+        'http://127.0.0.1:18404/api/v2',
       gitCommitSha: resolveGitCommitSha(),
       gitDirty: resolveGitDirty(),
       ...(easBuildProfile ? { easBuildProfile } : {}),
     },
-  };
-
-  if (!isNativeOtaDisabled) {
-    return expoConfig;
-  }
-
-  return {
-    ...expoConfig,
     updates: {
       enabled: false,
       checkAutomatically: 'NEVER',
       fallbackToCacheTimeout: 0,
     },
   };
+
+  return expoConfig;
 };

@@ -1,4 +1,4 @@
-﻿type ReceiptGeometry = {
+type ReceiptGeometry = {
   rootHeight: number;
   viewportTop: number;
   viewportHeight: number;

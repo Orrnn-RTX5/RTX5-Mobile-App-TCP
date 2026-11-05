@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveBrokerConnectionWithPublicDemoDefault, ORRNN_DEMO_PUBLIC_CACHE_NAMESPACE, ORRNN_DEMO_PUBLIC_BROKER_ID } from './orrnnDemoPublicMarket';
 import { setPublicBrokerContext, createPublicBrokerContext } from '../state/publicBrokerContext';

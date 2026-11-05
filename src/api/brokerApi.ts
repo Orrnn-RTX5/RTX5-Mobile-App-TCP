@@ -541,7 +541,7 @@ export class BrokerAPI {
       if (!activeToken) return createUnauthenticatedResponse();
       headers.set('Authorization', `Bearer ${activeToken}`);
     }
-    const mutationPath = endpoint.startsWith('https://') ? new URL(endpoint).pathname : endpoint.split('?')[0];
+    const mutationPath = /^https?:\/\//i.test(endpoint) ? new URL(endpoint).pathname : endpoint.split('?')[0];
     const tradingMutation = method !== 'GET' && method !== 'HEAD' && /^\/(?:api\/v2\/)?(?:orders|positions)(?:\/|$)/.test(mutationPath);
     if (tradingMutation) {
       assertTradingSession(capture.session.cacheNamespace);

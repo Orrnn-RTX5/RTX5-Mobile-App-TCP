@@ -15,6 +15,14 @@
  *   - `closedHistory.ts`   — paginated history loader
  */
 import { apiClient } from '../apiClient';
+import {
+  BIN_ACTION_CLOSE_POSITION,
+  BIN_ACTION_MODIFY_POSITION,
+  BIN_FLAG_CLEAR_SL,
+  BIN_FLAG_CLEAR_TP,
+  BIN_FLAG_PARTIAL_CLOSE,
+  executeBinaryOrderAsHttpResponse,
+} from '../binaryTcpOrderClient';
 import { createTradingApiError } from '../tradingErrors';
 import {
   recordClosePositionGatewayLatency,
@@ -89,13 +97,34 @@ const submitClosePositionRequest = async (
       send: async (prepared) => {
         const sentAtMs = getApiLatencyNow();
         watchClosePositionExecution(prepared.clientOrderId, descriptor.ticket, sentAtMs);
-        const response = await apiClient(prepared.endpoint, {
-          method: prepared.method,
-          // Optional mirror of the body id; the gateway ignores this header.
-          headers: { 'Idempotency-Key': prepared.clientOrderId },
-          body: prepared.body,
-          timeoutMs: CLOSE_POSITION_HTTP_TIMEOUT_MS,
-        });
+        const parsedCloseBody = (() => {
+          try {
+            return JSON.parse(prepared.body) as { volume?: string | number };
+          } catch {
+            return {};
+          }
+        })();
+        const isPartialClose =
+          parsedCloseBody.volume !== undefined && Number(parsedCloseBody.volume) > 0;
+        const response =
+          (await executeBinaryOrderAsHttpResponse(
+            {
+              action: BIN_ACTION_CLOSE_POSITION,
+              flags: isPartialClose ? BIN_FLAG_PARTIAL_CLOSE : 0,
+              login: owner.accountLogin,
+              ticket: descriptor.ticket,
+              volume: isPartialClose ? parsedCloseBody.volume : 0,
+              clientOrderId: prepared.clientOrderId,
+            },
+            { timeoutMs: CLOSE_POSITION_HTTP_TIMEOUT_MS },
+          )) ??
+          (await apiClient(prepared.endpoint, {
+            method: prepared.method,
+            // Optional mirror of the body id; the gateway ignores this header.
+            headers: { 'Idempotency-Key': prepared.clientOrderId },
+            body: prepared.body,
+            timeoutMs: CLOSE_POSITION_HTTP_TIMEOUT_MS,
+          }));
         const body = await response.json().catch(() => ({}));
         recordClosePositionGatewayLatency(descriptor.ticket, getApiLatencyNow() - sentAtMs);
         return {
@@ -301,17 +330,48 @@ export const positionsApi = {
     let failureRecorded = false;
     const sentAtMs = getApiLatencyNow();
     try {
-      const response = await apiClient(`/positions/${normalizedTicket.path}`, {
-        method: 'PUT',
-        headers: {
-          accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(normalizedPayload),
-        signal: requestOptions.signal,
-        timeoutMs: requestOptions.timeoutMs,
-        replayAfterAuthRefresh: false,
-      });
+      let modifyFlags = 0;
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedPayload, 'price_sl') &&
+        (normalizedPayload.price_sl === null || normalizedPayload.price_sl === 0)
+      ) {
+        modifyFlags |= BIN_FLAG_CLEAR_SL;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedPayload, 'price_tp') &&
+        (normalizedPayload.price_tp === null || normalizedPayload.price_tp === 0)
+      ) {
+        modifyFlags |= BIN_FLAG_CLEAR_TP;
+      }
+      const activeModifyOwner = captureActiveBrokerSessionOwnerStamp();
+      const response =
+        (await executeBinaryOrderAsHttpResponse(
+          {
+            action: BIN_ACTION_MODIFY_POSITION,
+            flags: modifyFlags,
+            login: activeModifyOwner?.accountLogin ?? 0,
+            ticket: normalizedTicket.numeric,
+            sl: normalizedPayload.price_sl ?? 0,
+            tp: normalizedPayload.price_tp ?? 0,
+            symbol: requestOptions.expectedSymbol,
+          },
+          {
+            signal: requestOptions.signal,
+            timeoutMs: requestOptions.timeoutMs,
+            expectedModifyEcho: normalizedPayload,
+          },
+        )) ??
+        (await apiClient(`/positions/${normalizedTicket.path}`, {
+          method: 'PUT',
+          headers: {
+            accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(normalizedPayload),
+          signal: requestOptions.signal,
+          timeoutMs: requestOptions.timeoutMs,
+          replayAfterAuthRefresh: false,
+        }));
       recordModifyPositionGatewayLatency(normalizedTicket.path, getApiLatencyNow() - sentAtMs);
       try {
         const requestId = response.headers.get('x-request-id')?.trim();

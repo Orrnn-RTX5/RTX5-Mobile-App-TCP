@@ -140,6 +140,8 @@ export interface BrokerServer {
   server_port: number;
   enabled?: boolean;
   created_at: number;   // epoch seconds
+  tcp_addr?: string;
+  display_server?: string;
 }
 
 export type RichValidatedBrokerServer = BrokerServer & {
@@ -522,24 +524,43 @@ const acceptRawV2BrokerRecord = (
   record: Readonly<Record<string, unknown>>,
   recordIndex: number,
 ): RawV2BrokerServer => {
-  const id = requiredDirectoryNumber(record, 'id', recordIndex);
-  const createdAt = requiredDirectoryNumber(record, 'created_at', recordIndex);
+  const rawId = record.id;
+  const id =
+    typeof rawId === 'number' && Number.isFinite(rawId)
+      ? rawId
+      : typeof rawId === 'string' && rawId.trim()
+        ? recordIndex + 1
+        : requiredDirectoryNumber(record, 'id', recordIndex);
+  const createdAt =
+    typeof record.created_at === 'number' && Number.isFinite(record.created_at)
+      ? record.created_at
+      : 1700000000;
   const server = requiredDirectoryString(record, 'server', recordIndex);
-  const serverIp = requiredDirectoryString(record, 'server_ip', recordIndex);
-  const protocol = requiredDirectoryString(record, 'protocol', recordIndex);
-  requiredDirectoryString(record, 'server_url', recordIndex);
-  requiredDirectoryString(record, 'feed_wss_url', recordIndex);
-  requiredDirectoryString(record, 'feed_status_https_url', recordIndex);
-  if (protocol.toLowerCase() !== 'https') {
+  const serverIp = optionalDirectoryString(record, 'server_ip') ?? '127.0.0.1';
+  const protocol = (optionalDirectoryString(record, 'protocol') ?? 'https').toLowerCase();
+  const serverUrl = requiredDirectoryString(record, 'server_url', recordIndex);
+  const feedWssUrl =
+    optionalDirectoryString(record, 'feed_wss_url') ??
+    optionalDirectoryString(record, 'feed_ws_url') ??
+    optionalDirectoryString(record, 'feed_url') ??
+    requiredDirectoryString(record, 'feed_wss_url', recordIndex);
+  const feedStatusHttpsUrl =
+    optionalDirectoryString(record, 'feed_status_https_url') ??
+    optionalDirectoryString(record, 'feed_status_url') ??
+    requiredDirectoryString(record, 'feed_status_https_url', recordIndex);
+  if (protocol !== 'https' && protocol !== 'http') {
     throw new BrokerDirectorySchemaError(
       'invalid_protocol',
-      `Broker directory record ${recordIndex} must declare HTTPS protocol.`,
+      `Broker directory record ${recordIndex} must declare HTTP/HTTPS protocol.`,
       recordIndex,
     );
   }
   const localConfigVersion = `v2:${id}:${createdAt}`;
   const candidate = {
     ...record,
+    server_url: serverUrl,
+    feed_wss_url: feedWssUrl,
+    feed_status_https_url: feedStatusHttpsUrl,
     directory_source: 'v2_raw' as const,
     config_version: localConfigVersion,
   };
@@ -563,6 +584,12 @@ const acceptRawV2BrokerRecord = (
       recordIndex,
     );
   }
+  const tcpAddr = optionalDirectoryString(record, 'tcp_addr');
+  const displayServer = optionalDirectoryString(record, 'display_server');
+  const serverPort =
+    typeof record.server_port === 'number' && Number.isFinite(record.server_port)
+      ? record.server_port
+      : 4443;
   return Object.freeze({
     directory_source: 'v2_raw' as const,
     id,
@@ -584,12 +611,14 @@ const acceptRawV2BrokerRecord = (
     feed_status_https_url: endpoints.feedStatusUrl,
     ...(endpoints.tradeWsBase ? { trade_wss_url: endpoints.tradeWsBase } : {}),
     ...(optionalDirectoryString(record, 'logo_url') ? { logo_url: optionalDirectoryString(record, 'logo_url') } : {}),
-    protocol: 'https',
+    protocol: protocol === 'http' ? 'http' : 'https',
     region: optionalDirectoryString(record, 'region') ?? '',
-    server,
+    server: displayServer || server,
     server_ip: serverIp,
-    server_port: requiredDirectoryNumber(record, 'server_port', recordIndex),
+    server_port: serverPort,
     created_at: createdAt,
+    ...(tcpAddr ? { tcp_addr: tcpAddr } : {}),
+    ...(displayServer ? { display_server: displayServer } : {}),
   });
 };
 
@@ -747,6 +776,19 @@ export function parseBrokerDirectoryListingPayload(payload: unknown): BrokerDire
   const hasSchemaVersion = envelope
     ? Object.prototype.hasOwnProperty.call(envelope, 'schema_version')
     : false;
+  if (
+    envelope &&
+    (!hasSchemaVersion ||
+      envelope.schema_version === 2 ||
+      envelope.schema_version === '2' ||
+      envelope.schema_version === RAW_V2_SCHEMA_VERSION) &&
+    (Array.isArray(envelope.brokers) || Array.isArray((envelope as Record<string, unknown>).servers))
+  ) {
+    const rawRows = Array.isArray(envelope.brokers)
+      ? envelope.brokers
+      : (envelope as Record<string, unknown>).servers as unknown[];
+    return parseRawV2BrokerDirectory(rawRows);
+  }
   if (envelope && !hasSchemaVersion && Array.isArray(envelope.value)) {
     return parseLegacyBrokerDirectoryIdentities(envelope.value);
   }
@@ -1135,6 +1177,55 @@ const requestBrokerHealthUrl = (healthUrl: string): Promise<Response> => {
 
 const isHealthProbeTimeout = (error: unknown): boolean =>
   error instanceof Error && error.name === 'AbortError';
+
+/**
+ * Switches the local clientcore Binary TCP bridge (`127.0.0.1:18404`) to the
+ * selected broker's `.srv` TCP address (`IP:4443`) discovered from Super Admin (`:9100`).
+ */
+export async function switchTcpBroker(
+  broker: {
+    broker_id?: string;
+    brokerId?: string;
+    broker_name?: string;
+    name?: string;
+    tcp_addr?: string;
+    tcpAddr?: string;
+    server?: string;
+    server_ip?: string;
+    server_port?: number;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const brokerId = String(broker.broker_id ?? broker.brokerId ?? '').trim();
+  const brokerName = String(broker.broker_name ?? broker.name ?? brokerId).trim();
+  const tcpAddr = String(
+    broker.tcp_addr ??
+    broker.tcpAddr ??
+    (broker.server && /^\d+\.\d+\.\d+\.\d+:\d+$/.test(broker.server) ? broker.server : '') ??
+    (broker.server_ip ? `${broker.server_ip}:${broker.server_port || 4443}` : ''),
+  ).trim();
+  if (!brokerId && !tcpAddr) return;
+  try {
+    await timedFetch('http://127.0.0.1:18404/api/tcp-client/switch-broker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        broker_id: brokerId,
+        name: brokerName,
+        tcp_addr: tcpAddr,
+      }),
+      signal,
+    }, {
+      label: 'tcp.switchBroker',
+      method: 'POST',
+      endpoint: '/api/tcp-client/switch-broker',
+      source: 'broker',
+      timeoutMs: 4000,
+    });
+  } catch {
+    // Best-effort bridge switch; local clientcore already falls back to broker_id lookup from :9100 cache.
+  }
+}
 
 export async function checkBrokerServerHealth(serverUrl: string): Promise<void> {
   const healthUrl = buildBrokerHealthUrl(serverUrl);

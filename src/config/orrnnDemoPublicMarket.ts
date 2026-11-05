@@ -1,4 +1,4 @@
-﻿// Compatibility names retained for chart callers; routing is now directory-scoped.
+// Compatibility names retained for chart callers; routing is now directory-scoped.
 import { getPublicBrokerContext, subscribePublicBrokerContext } from '../state/publicBrokerContext';
 export let ORRNN_DEMO_PUBLIC_BROKER_ID = '';
 export let ORRNN_PUBLIC_DEMO_LOGIN_BROKER_ID = '';

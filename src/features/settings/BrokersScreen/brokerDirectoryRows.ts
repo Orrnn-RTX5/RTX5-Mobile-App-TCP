@@ -82,7 +82,10 @@ export function resolveBrokerDomain(value: string): string | undefined {
   try {
     const parsed = new URL(raw.includes('://') ? raw : `https://${raw}`);
     const hostname = parsed.hostname.trim().replace(/\.$/, '').toLowerCase();
-    return parsed.protocol === 'https:' && hostname.includes('.')
+    if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '10.0.2.2') {
+      return parsed.host.toLowerCase();
+    }
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && hostname.includes('.')
       ? hostname
       : undefined;
   } catch {
@@ -96,6 +99,14 @@ export function normalizeBrokerLogoUrl(logoUrl?: string | null) {
   if (/^data:image\//i.test(raw)) return raw;
   if (/^\/\//.test(raw)) return `https:${raw}`;
   if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '10.0.2.2') {
+        return u.toString();
+      }
+    } catch {
+      // ignore
+    }
     return raw.replace(/^http:\/\//i, 'https://');
   }
 
@@ -103,7 +114,11 @@ export function normalizeBrokerLogoUrl(logoUrl?: string | null) {
     const base = raw.startsWith('/')
       ? `${PUBLIC_BROKER_DIRECTORY_ORIGIN}/`
       : `${PUBLIC_BROKER_DIRECTORY_BASE_URL.replace(/\/+$/, '')}/`;
-    return new URL(raw, base).toString().replace(/^http:\/\//i, 'https://');
+    const resolved = new URL(raw, base);
+    if (resolved.hostname === '127.0.0.1' || resolved.hostname === 'localhost' || resolved.hostname === '10.0.2.2') {
+      return resolved.toString();
+    }
+    return resolved.toString().replace(/^http:\/\//i, 'https://');
   } catch {
     return raw;
   }
@@ -159,9 +174,13 @@ function isRawNetworkEndpoint(value: string) {
 }
 
 function formatVisibleServerName(broker: BrokerServer) {
+  const displayServer = broker.display_server?.trim() || '';
+  if (displayServer) return displayServer;
   const server = broker.server?.trim() || '';
   if (!server || isRawNetworkEndpoint(server)) {
-    return broker.broker_name?.trim() || broker.broker_id;
+    const tcpAddr = broker.tcp_addr?.trim() || '';
+    const baseName = broker.broker_name?.trim() || broker.broker_id;
+    return tcpAddr ? `${baseName} (${tcpAddr})` : baseName;
   }
 
   return server;

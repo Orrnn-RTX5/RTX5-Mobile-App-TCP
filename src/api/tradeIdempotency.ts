@@ -106,24 +106,22 @@ export const createUuidV4 = (): string => {
 export const createTradeIdempotencyKey = (action: string): string =>
   `${normalizeAction(action)}-${createUuidV4()}`;
 
-/** `order-<uuidv4>` for `POST /orders` (43 characters). */
+/** `ord-<uuidv4>` for `POST /orders` (40 characters — fits 40-byte 0x38 slot). */
 export const createMarketOrderClientOrderId = (): string =>
-  `order-${createUuidV4()}`;
+  `ord-${createUuidV4()}`;
 
 /**
- * `close-<ticket>-<uuidv4>` for `POST /positions/{ticket}/close`.
- * A 19-digit (int64) ticket yields 62 characters, inside the 64 limit.
+ * `cls-<ticketTail>-<hex>` for `POST /positions/{ticket}/close` (<= 37 chars — fits 40-byte 0x38 slot).
  */
 export const createClosePositionClientOrderId = (ticket: string | number): string => {
   const ticketText = String(ticket).trim();
   if (!/^\d+$/.test(ticketText)) {
     throw new TypeError('A close client_order_id requires a numeric broker ticket.');
   }
-  const candidate = `close-${ticketText}-${createUuidV4()}`;
+  const ticketTail = ticketText.slice(-8);
+  const candidate = `cls-${ticketTail}-${randomHex(24)}`;
   if (!CLIENT_ORDER_ID_PATTERN.test(candidate)) {
-    // Only reachable for tickets longer than int64; keep the id valid while
-    // still unique by dropping the ticket segment.
-    return `close-${createUuidV4()}`;
+    return `cls-${createUuidV4()}`;
   }
   return candidate;
 };

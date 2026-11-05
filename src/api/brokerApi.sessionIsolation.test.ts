@@ -1,4 +1,4 @@
-﻿import { acceptTradingHydration } from '../services/tradingAccess';
+import { acceptTradingHydration } from '../services/tradingAccess';
 import { useTradingState } from '../state/tradingState';
 import assert from 'node:assert/strict';
 import test from 'node:test';

@@ -17,12 +17,29 @@
  */
 
 import { commitApiJson } from './apiClient';
-import { fetchAccountSnapshotResponse } from './accountSnapshotRequests';
+import {
+  fetchAccountSnapshotResponse,
+  fetchAccountWithMetricsSnapshot,
+} from './accountSnapshotRequests';
 import { formatMarginLevel, resolveServerMetric } from './accountsMapper';
+import { extractLiveAccountMetrics } from './ws/accountSocket.helpers';
+import { useLiveAccountState } from '../state/liveAccountState';
+import { useTradingState } from '../state/tradingState';
+import { readBackendNumber, resolveAccountCurrencyDigits } from '../utils/accountCurrency';
+import {
+  accountMetricsUnavailable,
+  extractAccountMetrics,
+  isValidPublicationToken,
+} from '../utils/accountMetrics';
 
 export { formatMarginLevel };
 
-type NumericAccountField = number | string | null | undefined;
+type NumericAccountField =
+  | number
+  | string
+  | { amount?: number | string | null; currency?: string; scale?: number }
+  | null
+  | undefined;
 
 /** Raw API response from GET /account/{login} */
 export interface AccountSummaryApiResponse {
@@ -53,6 +70,10 @@ export interface AccountSummaryApiResponse {
   currency?: string | null;
   account_currency?: string | null;
   accountCurrency?: string | null;
+  currency_digits?: NumericAccountField;
+  currencyDigits?: NumericAccountField;
+  publication_token?: string | null;
+  publicationToken?: string | null;
   leverage?: NumericAccountField;
 }
 
@@ -78,6 +99,9 @@ export interface AccountSummary {
   totalSwap: number;
   leverage: number;
   currency: string;
+  currencyDigits?: number | null;
+  publicationToken?: string;
+  metricsStatus?: 'ok' | 'unavailable';
   name?: string;
   group?: string;
   /**
@@ -88,22 +112,7 @@ export interface AccountSummary {
 }
 
 function parseFiniteNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim();
-    if (!normalized) {
-      return undefined;
-    }
-    const parsed = Number(normalized);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return undefined;
+  return readBackendNumber(value);
 }
 
 function pickFiniteNumber(...values: unknown[]): number | undefined {
@@ -172,6 +181,20 @@ export function mapAccountSummaryApiResponse(
     .map(([key]) => key);
   const name = cleanText(raw.name);
   const group = cleanText(raw.group);
+  const currency =
+    cleanText(raw.currency) ||
+    cleanText(raw.account_currency) ||
+    cleanText(raw.accountCurrency) ||
+    'USD';
+  const currencyDigits = resolveAccountCurrencyDigits(
+    { ...raw, currency },
+    raw.currency_digits ?? raw.currencyDigits,
+  );
+  const rawToken = raw.publication_token ?? raw.publicationToken;
+  const publicationToken = isValidPublicationToken(rawToken)
+    ? rawToken.trim()
+    : previous?.publicationToken;
+  const unavailable = accountMetricsUnavailable(raw);
 
   return {
     balance,
@@ -183,7 +206,10 @@ export function mapAccountSummaryApiResponse(
     marginLevel: marginLevel.value,
     totalSwap: toFiniteNumber(raw.total_swap),
     leverage: toFiniteNumber(raw.leverage),
-    currency: cleanText(raw.currency) || cleanText(raw.account_currency) || cleanText(raw.accountCurrency) || 'USD',
+    currency,
+    ...(currencyDigits !== null ? { currencyDigits } : {}),
+    ...(publicationToken ? { publicationToken } : {}),
+    ...(unavailable ? { metricsStatus: 'unavailable' as const } : {}),
     ...(name ? { name } : {}),
     ...(group ? { group } : {}),
     staleMetrics,
@@ -193,6 +219,58 @@ export function mapAccountSummaryApiResponse(
 // Investor (read-only) detection lives in a dependency-free module so auth and
 // refresh code can use it; re-exported here for account-facing callers.
 export { isInvestorReadOnlySession } from './investorSession';
+
+const lastAccountSummarySyncAtByLogin = new Map<string, number>();
+
+export function hasRecentAccountSummarySync(login: string, maxAgeMs = 1_500): boolean {
+  const key = login.trim();
+  const lastSyncAt = lastAccountSummarySyncAtByLogin.get(key);
+  return typeof lastSyncAt === 'number' && Date.now() - lastSyncAt < maxAgeMs;
+}
+
+function syncLiveAccountStoresFromSummaryResponse(
+  raw: unknown,
+  accountLogin: string,
+  summary: AccountSummary,
+): void {
+  lastAccountSummarySyncAtByLogin.set(accountLogin.trim(), Date.now());
+  const record = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : undefined;
+  const parsedMetrics = extractLiveAccountMetrics(raw) ?? {};
+  const login =
+    parsedMetrics.login ??
+    parseFiniteNumber(record?.id) ??
+    parseFiniteNumber(accountLogin);
+  const staleSet = new Set(summary.staleMetrics);
+
+  const liveMetrics = {
+    ...(login !== undefined ? { login } : {}),
+    balance: summary.balance,
+    credit: summary.credit,
+    currency: summary.currency,
+    ...(summary.currencyDigits !== undefined ? { currency_digits: summary.currencyDigits } : {}),
+    ...(summary.publicationToken ? { publication_token: summary.publicationToken } : {}),
+    ...(summary.metricsStatus === 'unavailable' ? { valid: false } : {}),
+    ...(!staleSet.has('equity') ? { equity: summary.equity } : {}),
+    ...(!staleSet.has('margin') ? { margin: summary.margin } : {}),
+    ...(!staleSet.has('freeMargin') ? { margin_free: summary.freeMargin } : {}),
+    ...(!staleSet.has('marginLevel') ? { margin_level: summary.marginLevel } : {}),
+    ...(!staleSet.has('profit') ? { floating: summary.profit } : {}),
+  };
+  useLiveAccountState.getState().applyMetricsSnapshot(liveMetrics);
+
+  useTradingState.getState().setAccount({
+    balance: summary.balance,
+    credit: summary.credit,
+    currency: summary.currency,
+    ...(!staleSet.has('equity') ? { equity: summary.equity } : {}),
+    ...(!staleSet.has('margin') ? { margin: summary.margin } : {}),
+    ...(!staleSet.has('freeMargin') ? { freeMargin: summary.freeMargin } : {}),
+    ...(!staleSet.has('marginLevel') ? { marginLevel: summary.marginLevel } : {}),
+    ...(!staleSet.has('profit') ? { floating: summary.profit } : {}),
+  });
+}
 
 /**
  * Fetches the live account summary.
@@ -221,6 +299,44 @@ export async function getAccountSummary(
     throw new Error(`API Error ${response.status}: ${errorMsg}`);
   }
 
-  return commitApiJson(response, response.cacheNamespace, (raw) =>
-    mapAccountSummaryApiResponse(raw as AccountSummaryApiResponse, previous));
+  return commitApiJson(response, response.cacheNamespace, (raw) => {
+    const unwrapped = extractAccountMetrics(raw) ?? raw;
+    const summary = mapAccountSummaryApiResponse(unwrapped as AccountSummaryApiResponse, previous);
+    syncLiveAccountStoresFromSummaryResponse(unwrapped, accountLogin, summary);
+    return summary;
+  });
+}
+
+/**
+ * Fetches and merges both GET /api/v2/account/{login} and GET /api/v2/account/{login}/metrics
+ * in parallel using the Publication Token Guard.
+ */
+export async function getAccountSummaryWithMetrics(
+  login?: string,
+  previous?: AccountSummary | null,
+): Promise<AccountSummary> {
+  const accountLogin = login?.trim() ?? '';
+  if (!/^\d+$/.test(accountLogin) || !/[1-9]/.test(accountLogin)) {
+    throw new Error('Login ID is required to fetch account summary');
+  }
+
+  const response = await fetchAccountWithMetricsSnapshot(accountLogin);
+
+  if (!response.ok) {
+    let errorMsg = 'Failed to fetch account summary';
+    try {
+      const errorData = response.data as Record<string, any>;
+      errorMsg = errorData.message || errorData.error || errorMsg;
+    } catch (e) {
+      // Ignored
+    }
+    throw new Error(`API Error ${response.status}: ${errorMsg}`);
+  }
+
+  return commitApiJson(response, response.cacheNamespace, (raw) => {
+    const unwrapped = extractAccountMetrics(raw) ?? raw;
+    const summary = mapAccountSummaryApiResponse(unwrapped as AccountSummaryApiResponse, previous);
+    syncLiveAccountStoresFromSummaryResponse(unwrapped, accountLogin, summary);
+    return summary;
+  });
 }

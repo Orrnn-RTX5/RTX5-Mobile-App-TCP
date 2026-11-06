@@ -60,6 +60,21 @@ const EMPTY_BROKER_DETAIL_SELECTION: BrokerDetailLaunchSelection = Object.freeze
 
 const clean = (value: string | undefined) => String(value ?? '').trim();
 
+const cleanServerLabel = (value: string | undefined, fallback: string) => {
+  const cleaned = clean(value)
+    .replace(/\s*\((?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\)\s*/g, '')
+    .replace(/\s*\([^)]*:\d+\)\s*/g, '')
+    .trim();
+  if (
+    !cleaned
+    || /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(cleaned)
+    || /^[a-z0-9.-]+\.[a-z]{2,}:\d+$/i.test(cleaned)
+  ) {
+    return fallback;
+  }
+  return cleaned;
+};
+
 /** Normalizes route/directory values while preserving the live broker identity. */
 export function normalizeBrokerDetailLaunchSelection(
   selection: Partial<BrokerDetailLaunchSelection>,
@@ -69,7 +84,7 @@ export function normalizeBrokerDetailLaunchSelection(
   return Object.freeze({
     brokerId,
     brokerName,
-    brokerServer: clean(selection.brokerServer) || brokerId || 'Server',
+    brokerServer: cleanServerLabel(selection.brokerServer, brokerName || brokerId || 'Server'),
     brokerServerUrl: clean(selection.brokerServerUrl),
     brokerLogoUrl: clean(selection.brokerLogoUrl),
     brokerDomain: clean(selection.brokerDomain),

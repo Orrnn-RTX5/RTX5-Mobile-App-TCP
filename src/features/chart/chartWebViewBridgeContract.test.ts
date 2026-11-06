@@ -51,7 +51,7 @@ test('custom candle renderers lower main-chart contrast without changing saved s
 
   assertSourceContains(
     chartConstantsSource,
-    /export const CHART_CANDLE_RENDER_OPACITY = 0\.72[\s\S]*export const CHART_BEARISH_CANDLE_RENDER_OPACITY = 0\.74/,
+    /export const CHART_CANDLE_RENDER_OPACITY = 0\.56[\s\S]*export const CHART_BEARISH_CANDLE_RENDER_OPACITY = 0\.58/,
     'native and web main charts must keep green opacity stable and give red candles a tiny contrast increase',
   );
   assertSourceContains(
@@ -885,8 +885,8 @@ test('webview bridge: split trade labels retain separate side and live PnL field
   );
   assertSourceContains(
     refreshBody,
-    /label\.style\.color = item\.labelSideColor \|\| item\.color[\s\S]*label\.style\.fontSize = isPendingEntryLabel \? '11px' : hasSplitTradeLabel \? '9px' : '12px'[\s\S]*label\.style\.fontWeight = '700'/,
-    'pending labels use readable 11px text while existing split labels retain their compact bold typography',
+    /label\.style\.color = item\.labelSideColor \|\| item\.color[\s\S]*label\.style\.fontSize = isPendingEntryLabel \? '11px' : hasSplitTradeLabel \? '11\.5px' : '11\.5px'[\s\S]*label\.style\.fontWeight = '500'/,
+    'pending and split trade labels use clean 11.5px medium-weight typography matching the right price axis',
   );
 });
 
@@ -940,7 +940,7 @@ test('live native label patches preserve Buy/Sell color while updating P/L', () 
     assert.equal(nodes[0].textContent, 'SELL 0.03');
     assert.equal(nodes[2].textContent, text);
     assert.equal(nodes[0].style.color, '#DC2626');
-    assert.equal(nodes[1].style.color, color);
+    assert.equal(nodes[1].style.color, '#DC2626');
     assert.equal(nodes[2].style.color, color);
     assert.equal(label.childNodes, nodes);
   }
@@ -978,7 +978,7 @@ test('webview bridge: open-position trade labels stay in one vertical column whi
   );
   assertSourceContains(
     repositionBody,
-    /anchoredLabelRecords\.sort\(function\(left, right\) \{ return left\.y - right\.y \|\| String\(left\.id \|\| ''\)\.localeCompare\(String\(right\.id \|\| ''\)\); \}\)[\s\S]*resolveAnchoredOverlayLabelTops\(anchoredLabelRecords\)[\s\S]*record\.node\.style\.top = labelTop[\s\S]*renderPositionControl\(record\.node, record, labelTop[\s\S]*var rowY = record\.y[\s\S]*record\.lineNode\.style\.top = rowY[\s\S]*record\.boxNode\.style\.top = Math\.round\(rowY - OVERLAY_POSITION_BOX_HEIGHT \/ 2\)/,
+    /anchoredLabelRecords\.sort\(function\(left, right\) \{ return left\.y - right\.y \|\| String\(left\.id \|\| ''\)\.localeCompare\(String\(right\.id \|\| ''\)\); \}\)[\s\S]*resolveAnchoredOverlayLabelTops\(anchoredLabelRecords\)[\s\S]*record\.node\.style\.top = labelTop[\s\S]*var rowY = record\.y[\s\S]*record\.lineNode\.style\.top = rowY[\s\S]*record\.boxNode\.style\.top = Math\.round\(rowY - OVERLAY_POSITION_BOX_HEIGHT \/ 2\)/,
     'pan and zoom must retain the exact entry line and price box while controls use their collision layout',
   );
   assertSourceContains(
@@ -1152,6 +1152,11 @@ test('webview bridge: vertical chart panning defers price-line rebuilds while mo
     chartWebViewHtmlSource,
     /dy > VERT_PAN_THRESHOLD && dy > dx \* 1\.2[\s\S]*beginVerticalPan\(vertPanPending\.startY\)[\s\S]*continueVerticalPan\(point\.y\)[\s\S]*stopChartEvent\(event\)/,
     'chart-body vertical movement must apply the visible price range directly while keeping trade labels attached',
+  );
+  assertSourceContains(
+    chartWebViewHtmlSource,
+    /var applyVerticalPanAt = function\(clientY\)[\s\S]*chart\.timeScale\(\)\.setVisibleLogicalRange\(nextLogicalRange\)[\s\S]*renderVerticalPanRange\(nextRange\)/,
+    'chart-body 2D dragging must pan both horizontal logical range and vertical price range while keeping SL/TP and trade overlays attached',
   );
   assertSourceContains(
     chartWebViewHtmlSource,

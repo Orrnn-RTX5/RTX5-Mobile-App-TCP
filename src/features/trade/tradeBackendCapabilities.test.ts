@@ -132,6 +132,10 @@ test('public environment values cannot activate capabilities beyond the configur
   }
   assert.deepEqual(
     resolveTradeBackendCapabilities(hostileEnvironment, 'unknown').sltp,
+    { ...MARKET_AND_POSITION_SLTP_CAPABILITIES, pendingOrderProtection: true },
+  );
+  assert.deepEqual(
+    resolveTradeBackendCapabilities(hostileEnvironment, '').sltp,
     { ...NO_BROKER_SLTP_CAPABILITIES, pendingOrderProtection: true },
   );
 });
@@ -313,8 +317,8 @@ test('legacy readiness values cannot disable integrated pending placement', () =
       EXPO_PUBLIC_PENDING_ORDERS_API_READY: value,
     }, 'orrnn-demo');
 
-    assert.equal(capabilities.pendingOrders, true, value);
-    assert.equal(capabilities.pendingOrderPreview, true, value);
+    assert.equal(capabilities.pendingOrders, true, String(value));
+    assert.equal(capabilities.pendingOrderPreview, true, String(value));
     assert.equal(isNewMarketOrderProtectionBackendLocked(capabilities), false);
     for (const orderType of CHART_ORDER_TYPES) {
       assert.equal(

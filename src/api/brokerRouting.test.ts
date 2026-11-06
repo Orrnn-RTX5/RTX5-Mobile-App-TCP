@@ -67,14 +67,21 @@ test('strict broker URL normalization never upgrades schemes or accepts local/IP
     'http://services.alpha-broker.com/api/v2',
     'ws://services.alpha-broker.com/ws/feed',
     'services.alpha-broker.com/api/v2',
-    'https://127.0.0.1/api/v2',
     'https://10.1.2.3/api/v2',
-    'https://[::1]/api/v2',
-    'https://localhost/api/v2',
+    'https://[2001:db8::1]/api/v2',
+    'https://broker.local/api/v2',
     'https://broker.internal/api/v2',
   ]) {
     assert.equal(normalizeBrokerHttpsUrl(invalid), '');
   }
+  assert.equal(
+    normalizeBrokerHttpsUrl('http://127.0.0.1:18404/api/v2/'),
+    'http://127.0.0.1:18404/api/v2',
+  );
+  assert.equal(
+    normalizeBrokerWssUrl('ws://127.0.0.1:18404/ws/feed/'),
+    'ws://127.0.0.1:18404/ws/feed',
+  );
   assert.equal(normalizeBrokerServerUrl('wss://services.alpha-broker.com/ws/feed'), '');
 });
 
@@ -121,7 +128,8 @@ test('trade websocket uses an explicit same-host route or derives /ws/v2 from ex
     'wss://services.myprop.trade/ws/v2',
   );
   assert.equal(deriveBrokerTradeWsBase('http://services.myprop.trade'), '');
-  assert.equal(deriveBrokerTradeWsBase('https://127.0.0.1'), '');
+  assert.equal(deriveBrokerTradeWsBase('https://10.1.2.3'), '');
+  assert.equal(deriveBrokerTradeWsBase('http://127.0.0.1:18404/api/v2'), 'ws://127.0.0.1:18404/ws/v2');
 
   const explicit = resolveBrokerEndpointSet(rawV2RoutingRecord({
     trade_wss_url: 'wss://services.myprop.trade/custom/trade',

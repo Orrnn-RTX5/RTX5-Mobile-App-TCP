@@ -143,7 +143,7 @@ test('chart viewport keeps scale controls in the radial menu, not price-scale do
   assert.doesNotMatch(source, /styles\.chartPriceScaleMenuButton/);
   assertSourceContains(
     source,
-    /label: t\(showChartVolumePane \? 'Hide Volume Bar' : 'Show Volume Bar'\)[\s\S]*label: t\('Reset'\)/,
+    /label: t\(showChartVolumePane \? 'Hide Volume Bar' : 'Show Volume Bar'\)[\s\S]*label: t\('Reset Chart'\)/,
     'chart volume/reset actions must remain available from the toolbar options sheet',
   );
 });

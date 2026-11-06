@@ -11,7 +11,7 @@ test('optional warmups yield between jobs rather than all starting in one painte
   const frames = new Map<number, FrameRequestCallback>();
   let nextId = 0;
   globalThis.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
-  globalThis.cancelAnimationFrame = id => { frames.delete(id); };
+  globalThis.cancelAnimationFrame = id => { if (typeof id === 'number') frames.delete(id); };
   Reflect.deleteProperty(globalThis, 'requestIdleCallback');
   const calls: number[] = [];
   const cancels: Array<() => void> = [];

@@ -1,6 +1,7 @@
 import React, { useLayoutEffect } from 'react';
 import type { QuoteItem } from '../../../domain/tradingModels';
 import { hasLiveQuoteFeedData, useLiveSymbolQuote } from '../../../query/websocket';
+import { usePositionsState } from '../../../state/positionsState';
 
 export type ChartTradeOverlayLiveQuote = Partial<QuoteItem>;
 
@@ -12,7 +13,8 @@ type ChartTradeOverlayLiveBridgeProps = {
 
 /**
  * Tiny tick-owned bridge for open-position labels. It deliberately renders no
- * UI, so each quote can update the WebView label without waking ChartScreen.
+ * UI, so each quote or backend position P/L update can refresh the WebView
+ * label without waking ChartScreen.
  */
 export const ChartTradeOverlayLiveBridge = React.memo(
   function ChartTradeOverlayLiveBridge({
@@ -21,8 +23,25 @@ export const ChartTradeOverlayLiveBridge = React.memo(
     onQuote,
   }: ChartTradeOverlayLiveBridgeProps) {
     const liveQuote = useLiveSymbolQuote(symbol, active, 0);
+    // Track backend-streamed position P/L updates for the active symbol so the
+    // chart trade line reflects backend P/L immediately without frontend math.
+    const backendPnlSignature = usePositionsState((state) => {
+      if (!active) return '';
+      const target = symbol.trim().toUpperCase();
+      let sig = '';
+      for (let i = 0; i < state.positions.length; i += 1) {
+        const pos = state.positions[i];
+        if (pos.symbol.trim().toUpperCase() === target) {
+          sig += `${pos.id}:${pos.pnl};`;
+        }
+      }
+      return sig;
+    });
 
     useLayoutEffect(() => {
+      if (!active) {
+        return;
+      }
       const hasUsableBid =
         typeof liveQuote?.bid === 'number' &&
         Number.isFinite(liveQuote.bid) &&
@@ -32,16 +51,15 @@ export const ChartTradeOverlayLiveBridge = React.memo(
         Number.isFinite(liveQuote.ask) &&
         liveQuote.ask > 0;
       if (
-        !active ||
-        !liveQuote ||
-        !hasLiveQuoteFeedData(liveQuote) ||
-        (!hasUsableBid && !hasUsableAsk)
+        liveQuote &&
+        hasLiveQuoteFeedData(liveQuote) &&
+        (hasUsableBid || hasUsableAsk)
       ) {
-        return;
+        onQuote(liveQuote);
+      } else if (backendPnlSignature) {
+        onQuote(liveQuote ?? {});
       }
-
-      onQuote(liveQuote);
-    }, [active, liveQuote, onQuote]);
+    }, [active, backendPnlSignature, liveQuote, onQuote]);
 
     return null;
   },

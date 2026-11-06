@@ -618,6 +618,14 @@ const placeMarketOrderAttempt = async (
       ) {
         finalData.volume = Number(restWithoutBroker.volume);
       }
+      const requestedSl = Number(restWithoutBroker.sl ?? restWithoutBroker.price_sl);
+      if (finalData.price_sl == null && Number.isFinite(requestedSl) && requestedSl > 0) {
+        finalData.price_sl = requestedSl;
+      }
+      const requestedTp = Number(restWithoutBroker.tp ?? restWithoutBroker.price_tp);
+      if (finalData.price_tp == null && Number.isFinite(requestedTp) && requestedTp > 0) {
+        finalData.price_tp = requestedTp;
+      }
       if (typeof finalData.status !== 'string' || !finalData.status.trim()) {
         finalData.status = 'filled';
       }

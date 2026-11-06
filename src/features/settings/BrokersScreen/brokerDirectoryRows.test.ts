@@ -64,11 +64,11 @@ test('broker logo URLs normalize explicit origins without fabricating an unconfi
   );
   assert.equal(
     normalizeBrokerLogoUrl('/brokers/example/logo'),
-    '/brokers/example/logo',
+    'http://127.0.0.1:18404/brokers/example/logo',
   );
   assert.equal(
     normalizeBrokerLogoUrl('assets/logo.png'),
-    'assets/logo.png',
+    'http://127.0.0.1:18404/api/v2/assets/logo.png',
   );
 });
 
@@ -88,7 +88,7 @@ test('broker logo resolver honors direct and nested backend fields', () => {
   nested.branding = { image_url: '/images/nested.png' };
   assert.equal(
     resolveBrokerLogoUrl(nested),
-    '/images/nested.png',
+    'http://127.0.0.1:18404/images/nested.png',
   );
 });
 

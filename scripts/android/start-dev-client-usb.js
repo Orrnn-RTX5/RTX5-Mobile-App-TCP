@@ -5,6 +5,7 @@ const { createExpoStartOptions, selectConnectionOptions } = require('../expoStar
 const { networkInterfaces } = require('node:os');
 const { reuseMetroSession, readMetroManifest } = require('./existingMetroSession');
 const { printProjectQr, watchStartupQr } = require('./terminalQr');
+const { ensureDeviceTcpBridge } = require('./ensureDeviceTcpBridge');
 const {
   buildAndroidEnv,
   formatDoctorReport,
@@ -59,8 +60,10 @@ if (adbAvailable && (usbDeviceAvailable || connection.hostType === 'localhost' |
   // USB can need a moment to reconnect. Do not switch to an unreachable LAN
   // address just because the first forwarding command timed out.
   reverseSucceeded = ensureAdbReverse({ stdio: 'inherit', timeout: 10000 });
+  if (usbDeviceAvailable) ensureDeviceTcpBridge({ adbCommand, projectRoot, state, env });
   if (!reverseSucceeded) {
     reverseSucceeded = ensureAdbReverse({ stdio: 'inherit', timeout: 10000 });
+    if (usbDeviceAvailable) ensureDeviceTcpBridge({ adbCommand, projectRoot, state, env });
   }
 
   if (!reverseSucceeded) {
@@ -114,6 +117,13 @@ async function launch() {
     throw new Error(`No Metro server is running on port ${startOptions.port}. No new server started.`);
   }
 
+  // Ensure @expo/ws-tunnel and @expo/cli runtime patches are applied before spawning Expo CLI.
+  try {
+    require('../patch-react-native-dev-middleware');
+  } catch {
+    // Continue if postinstall patches cannot be refreshed.
+  }
+
   // Launch Node directly: spawning npx.cmd is unreliable on Windows and paths with spaces.
   const expoCliPath = path.join(path.dirname(require.resolve('expo/package.json')), 'bin', 'cli');
   const child = spawn(process.execPath, [expoCliPath, ...expoArgs], {
@@ -121,6 +131,29 @@ async function launch() {
     env,
     stdio: process.stdout.isTTY ? 'inherit' : ['inherit', 'pipe', 'pipe'],
   });
+  const prepareAndroidBundle = async (manifest, quiet = false) => {
+    if (!manifest.launchAsset?.url) return;
+    if (!quiet) {
+      console.log('\nPreparing the Android app before showing the QR...');
+    }
+    const bundleUrl = new URL(manifest.launchAsset.url, `http://127.0.0.1:${startOptions.port}`);
+    bundleUrl.protocol = 'http:';
+    bundleUrl.host = `127.0.0.1:${startOptions.port}`;
+    const response = await fetch(bundleUrl, { signal: AbortSignal.timeout(180000) });
+    if (!response.ok) throw new Error(`Android bundle failed (${response.status}).`);
+    for await (const chunk of response.body) { /* drain without retaining the bundle */ }
+    if (bundleUrl.searchParams.get('lazy') === 'true') {
+      const qualifiedUrl = new URL(bundleUrl.toString());
+      qualifiedUrl.pathname = '/node_modules/expo-router/build/qualified-entry.bundle';
+      qualifiedUrl.searchParams.set('modulesOnly', 'true');
+      qualifiedUrl.searchParams.set('runModule', 'false');
+      const qualifiedRes = await fetch(qualifiedUrl, { signal: AbortSignal.timeout(180000) }).catch(() => null);
+      if (qualifiedRes?.ok && qualifiedRes.body) {
+        for await (const chunk of qualifiedRes.body) { /* drain lazy chunk */ }
+      }
+    }
+  };
+  const shouldPrewarmBundleOnHost = !expoArgs.includes('--android');
   let stopQrWatcher = () => {};
   if (!process.stdout.isTTY) {
     child.stdout.pipe(process.stdout, { end: false });
@@ -138,17 +171,19 @@ async function launch() {
         projectRoot,
         sdkVersion: `exposdk:${sdkVersion}`,
         readManifest: readMetroManifest,
-        prepare: async (manifest) => {
-          if (!manifest.launchAsset?.url) return;
-          console.log('\nPreparing the Android app before showing the QR...');
-          const bundleUrl = new URL(manifest.launchAsset.url);
-          bundleUrl.protocol = 'http:';
-          bundleUrl.host = `127.0.0.1:${startOptions.port}`;
-          const response = await fetch(bundleUrl, { signal: AbortSignal.timeout(180000) });
-          if (!response.ok) throw new Error(`Android bundle failed (${response.status}).`);
-          for await (const chunk of response.body) { /* drain without retaining the bundle */ }
-        },
+        prepare: shouldPrewarmBundleOnHost ? (manifest) => prepareAndroidBundle(manifest, false) : undefined,
       });
+    });
+  } else {
+    stopQrWatcher = watchStartupQr({
+      port: startOptions.port,
+      hostType: connection.hostType,
+      useExpoGo: startOptions.useExpoGo,
+      projectRoot,
+      sdkVersion: `exposdk:${sdkVersion}`,
+      readManifest: readMetroManifest,
+      prepare: shouldPrewarmBundleOnHost ? (manifest) => prepareAndroidBundle(manifest, true) : undefined,
+      print: () => {},
     });
   }
 

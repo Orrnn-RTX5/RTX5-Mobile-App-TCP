@@ -28,15 +28,15 @@ test('no EXPO_PUBLIC feed-token or feed-broker-id env var exists in config', () 
   }
 });
 
-test('directory and platform API point at superadmin-prod (contract v3)', () => {
+test('directory and platform API point at local TCP bridge 127.0.0.1:18404 and tcp-superadmin (TCP contract)', () => {
   const env = source('.env');
-  assert.match(env, /^EXPO_PUBLIC_BROKER_DIRECTORY_BASE_URL=https:\/\/superadmin-prod\.orrnn\.com\/api\/v2\r?$/m);
-  assert.match(env, /^EXPO_PUBLIC_ADDITIONAL_BROKER_DIRECTORY_BASE_URL=https:\/\/nexa-terminal\.orrnn\.com\/discovery-api\/api\/v2\r?$/m);
-  assert.match(env, /^EXPO_PUBLIC_ADDITIONAL_BROKER_IDS=Nexa\r?$/m);
-  assert.match(env, /^EXPO_PUBLIC_API_BASE_URL=https:\/\/superadmin-prod\.orrnn\.com\/api\/v2\r?$/m);
+  assert.match(env, /^EXPO_PUBLIC_BROKER_DIRECTORY_BASE_URL=http:\/\/127\.0\.0\.1:18404\/api\/v2\r?$/m);
+  assert.match(env, /^EXPO_PUBLIC_ADDITIONAL_BROKER_DIRECTORY_BASE_URL=https:\/\/tcp-superadmin\.orrnn\.com\/api\/v2\r?$/m);
+  assert.match(env, /^EXPO_PUBLIC_ADDITIONAL_BROKER_IDS=yo4x\r?$/m);
+  assert.match(env, /^EXPO_PUBLIC_API_BASE_URL=http:\/\/127\.0\.0\.1:18404\/api\/v2\r?$/m);
   const appConfig = source('app.config.js');
   assert.doesNotMatch(appConfig, /superbackend\.orrnn\.com|fxtrustsuperbackned\.orrnn\.com/);
-  assert.equal(appConfig.match(/'https:\/\/superadmin-prod\.orrnn\.com\/api\/v2'/g)?.length, 2);
+  assert.equal(appConfig.match(/'http:\/\/127\.0\.0\.1:18404\/api\/v2'/g)?.length, 2);
 });
 
 test('the quote feed URL is the plain feedWsBase: no token, no env lookup', () => {

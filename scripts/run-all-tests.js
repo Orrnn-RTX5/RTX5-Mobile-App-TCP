@@ -31,28 +31,34 @@ if (testFiles.length === 0) {
 }
 
 const repositoryRoot = dirname(PROJECT_ROOT);
-const toolchain = JSON.parse(
-  readFileSync(join(repositoryRoot, 'WORKSPACE_TOOLCHAIN.json'), 'utf8'),
-);
-const toolRoot = join(repositoryRoot, toolchain.jsToolchainDirectory);
-const toolPackagePath = join(toolRoot, 'node_modules', 'tsx', 'package.json');
-if (!existsSync(toolPackagePath)) {
-  console.error('The locked RTX5 JavaScript tools are missing. Run SETUP_NEW_WINDOWS_MACHINE.ps1.');
-  process.exit(1);
-}
-const installedTsxVersion = JSON.parse(readFileSync(toolPackagePath, 'utf8')).version;
-if (installedTsxVersion !== toolchain.tsx) {
-  console.error('The installed tsx version differs from WORKSPACE_TOOLCHAIN.json.');
-  process.exit(1);
+const toolchainPath = join(repositoryRoot, 'WORKSPACE_TOOLCHAIN.json');
+let tsxCliPath = '';
+
+if (existsSync(toolchainPath)) {
+  const toolchain = JSON.parse(readFileSync(toolchainPath, 'utf8'));
+  const toolRoot = join(repositoryRoot, toolchain.jsToolchainDirectory);
+  const toolPackagePath = join(toolRoot, 'node_modules', 'tsx', 'package.json');
+  if (existsSync(toolPackagePath)) {
+    const installedTsxVersion = JSON.parse(readFileSync(toolPackagePath, 'utf8')).version;
+    if (installedTsxVersion !== toolchain.tsx) {
+      console.error('The installed tsx version differs from WORKSPACE_TOOLCHAIN.json.');
+      process.exit(1);
+    }
+    try {
+      tsxCliPath = require.resolve('tsx/cli', { paths: [toolRoot] });
+    } catch {}
+  }
 }
 
-let tsxCliPath = '';
-try {
-  tsxCliPath = require.resolve('tsx/cli', { paths: [toolRoot] });
-} catch {
-  console.error('The pinned tsx test runner is missing. Run npm ci.');
-  process.exit(1);
+if (!tsxCliPath) {
+  try {
+    tsxCliPath = require.resolve('tsx/cli', { paths: [PROJECT_ROOT] });
+  } catch {
+    console.error('The tsx test runner is missing. Run npm install.');
+    process.exit(1);
+  }
 }
+
 let failed = false;
 
 for (let start = 0; start < testFiles.length; start += BATCH_SIZE) {
@@ -63,7 +69,7 @@ for (let start = 0; start < testFiles.length; start += BATCH_SIZE) {
 
   const result = spawnSync(
     process.execPath,
-    [tsxCliPath, '--test', ...batch],
+    [tsxCliPath, '--test', '--test-force-exit', ...batch],
     {
       cwd: PROJECT_ROOT,
       encoding: 'utf8',

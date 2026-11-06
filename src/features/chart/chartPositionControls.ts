@@ -1,5 +1,6 @@
 import type { PositionItem, QuoteItem } from '../../domain/tradingModels';
 import { MARKET_QUOTE_STALE_AFTER_MS } from '../../market/quotePolicy';
+import { resolveLivePositionPnl } from '../trade/livePositionMetrics';
 import { normalizeChartOverlaySymbol } from './chartOverlays/symbolUtils';
 import { parseChartPositionStopDragKey } from './chartOverlays/positionStopDragKeys';
 
@@ -44,22 +45,16 @@ export function formatPositionLots(volume: number, step?: number): string {
   return volume.toFixed(Math.max(decimals, Math.min(8, (String(volume).split('.')[1] ?? '').length)));
 }
 
-export function positionProfitDisplay(position: PositionItem, quote?: Partial<QuoteItem>, now = Date.now()) {
+/**
+ * Displays only the backend-reported position P/L without any frontend tick
+ * or contract-size extrapolation.
+ */
+export function positionProfitDisplay(position: PositionItem, _quote?: Partial<QuoteItem>, _now = Date.now()) {
+  void _quote;
+  void _now;
   const reported = Number(position.pnl);
-  if (position.pnlReported === false || !Number.isFinite(reported)) return { value: null, estimated: false };
-  const liquidation = position.side === 'buy' ? quote?.bid : quote?.ask;
-  const stamp = quote?.lastReceivedAt || quote?.lastTickAt;
-  const fresh = quote?.stale !== true && quote?.tradable !== false && typeof stamp === 'number'
-    && stamp > 0 && now - stamp >= -5000 && now - stamp <= MARKET_QUOTE_STALE_AFTER_MS;
-  const direction = position.side === 'buy' ? 1 : -1;
-  const delta = direction * (position.currentPrice - position.openPrice);
-  const charges = (Number(position.swap) || 0) + (Number(position.commission) || 0);
-  // Calibrate only from this broker's account-currency snapshot. No guessed
-  // Forex contract size or quote-currency amount is labelled account profit.
-  const factor = (reported - charges) / delta;
-  if (fresh && typeof liquidation === 'number' && liquidation > 0 && Math.abs(delta) > 1e-10
-    && Number.isFinite(factor) && factor > 0 && liquidation !== position.currentPrice) {
-    return { value: reported + direction * (liquidation - position.currentPrice) * factor, estimated: true };
+  if (position.pnlReported === false || !Number.isFinite(reported)) {
+    return { value: null, estimated: false };
   }
   return { value: reported, estimated: false };
 }

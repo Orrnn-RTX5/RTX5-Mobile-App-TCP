@@ -40,7 +40,7 @@ import {
 } from './historyMoney';
 import { spacing } from '../../ui/theme/index';
 import { useTheme } from '../../ui/theme/useTheme';
-import { ThemeColors } from '../../ui/theme/glass';
+import { GDark, GLight, ThemeColors } from '../../ui/theme/glass';
 import { fmt } from '../../utils/format';
 import { formatBackendPrice } from '../../utils/backendPrice';
 import { formatBrokerTime } from '../../utils/brokerTime';
@@ -574,9 +574,12 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
   const keyedBaseData = useMemo(() => keyHistoryRows(baseData), [baseData]);
   const data = useMemo(() => sortHistoryRows(keyedBaseData, sortBy), [keyedBaseData, sortBy]);
   const renderHistoryRow = useCallback(
-    ({ item }: { item: HistoryRow }) => <HistoryItemRow item={item} T={T} isDark={isDark} currency={currency} />,
-    [T, isDark, currency],
+    ({ item }: { item: HistoryRow }) => <HistoryItemRow item={item} currency={currency} />,
+    [currency],
   );
+  const handleNetPnlPress = useCallback(() => {
+    router.push({ pathname: '/history/filter', params: { view: 'net-pnl' } });
+  }, []);
   const profitRows = useMemo(
     () => data.filter((item) => typeof item.profit === 'number') as Array<HistoryRow & { profit: number }>,
     [data]
@@ -594,8 +597,8 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
     setHistorySummaryDetailsVisible(!historySummaryDetailsVisible);
   }, [historySummaryDetailsVisible, setHistorySummaryDetailsVisible]);
 
-  const historyLoading = historyDataActive && (tab === 'Orders' ? ordersPending : tab === 'Deals' ? dealsPending : tab === 'Deals & Orders' ? dealsPending || ordersPending : positionsPending || dealsPending);
-  const historyError = tab === 'Orders' ? ordersError : tab === 'Deals' ? dealsError : tab === 'Deals & Orders' ? dealsError || ordersError : positionsError || dealsError;
+  const historyLoading = historyDataActive && (tab === 'Orders' ? ordersPending : tab === 'Deals' ? dealsPending : tab === 'Deals & Orders' ? dealsPending && ordersPending : positionsPending && dealsPending);
+  const historyError = tab === 'Orders' ? ordersError : tab === 'Deals' ? dealsError : tab === 'Deals & Orders' ? dealsError && ordersError : positionsError && dealsError;
   const retryHistory = () => {
     if (!historyDataActive) return;
     if (tab === 'Orders') void refetchOrders();
@@ -635,13 +638,6 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
   return (
     <Screen noBottomInset style={isDark ? { backgroundColor: '#121212' } : undefined}>
       <AppHeader title={t('History')} noBorder />
-      {data.length > 0 && historyNotice ? (
-        <View style={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }} accessibilityLiveRegion="polite">
-          <Text style={{ color: T.textSub }}>{historyNotice}</Text>
-          <FastPressable accessibilityRole="button" accessibilityLabel={t('Retry')} onPress={retryHistory}><Text style={{ color: T.accent }}>{t('Retry')}</Text></FastPressable>
-          {historyComplete === false ? <FastPressable accessibilityRole="button" accessibilityLabel={t('Change date range')} onPress={openHistoryFilter}><Text style={{ color: T.accent }}>{t('Change date range')}</Text></FastPressable> : null}
-        </View>
-      ) : null}
       {!scrollSummary ? historySummaryHeader : null}
 
       <FlatList
@@ -651,9 +647,9 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
         keyExtractor={historyRowKey}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={15}
-        maxToRenderPerBatch={10}
-        windowSize={5}
+        initialNumToRender={isScreenFocused ? 8 : 5}
+        maxToRenderPerBatch={8}
+        windowSize={isScreenFocused ? 5 : 3}
         removeClippedSubviews={true}
         ListHeaderComponent={(
           <>
@@ -737,11 +733,15 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
                   {TABS.map((item) => (
                     <FastPressable
                       key={item}
-                      style={[styles.segmentButton, tab === item && styles.segmentButtonActive]}
+                      style={[
+                        styles.segmentButton,
+                        item === 'Deals & Orders' && styles.segmentButtonWide,
+                        tab === item && styles.segmentButtonActive,
+                      ]}
                       onPress={() => startTransition(() => setTab(item))}
                       latencyLabel={`history.tab.${item}`}
                     >
-                      <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.segmentText, { color: tab === item ? T.text : T.textMuted }]}>{t(item)}</Text>
+                      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={[styles.segmentText, { color: tab === item ? T.text : T.textMuted }]}>{t(item)}</Text>
                     </FastPressable>
                   ))}
                 </View>
@@ -784,11 +784,7 @@ const HistoryScreenInner = memo(function HistoryScreenInner({ isScreenFocused }:
                   tone={netTone}
                   T={T}
                   isDark={isDark}
-                  onPress={
-                    tab === 'Positions'
-                      ? () => router.push({ pathname: '/history/filter', params: { view: 'net-pnl' } })
-                      : undefined
-                  }
+                  onPress={tab === 'Positions' ? handleNetPnlPress : undefined}
                 />
               </View>
             </View>
@@ -824,7 +820,21 @@ export function HistoryScreen() {
 /**
  * Renders a generic row for historical account operations such as deposits, withdrawals, or balance adjustments.
  */
-const HistoryItemRow = memo(function HistoryItemRow({ item, T, isDark, currency }: { item: HistoryRow; T: ThemeColors; isDark: boolean; currency: string }) {
+const HistoryItemRow = memo(function HistoryItemRow({
+  item,
+  T: propT,
+  isDark: propIsDark,
+  currency,
+}: {
+  item: HistoryRow;
+  T?: ThemeColors;
+  isDark?: boolean;
+  currency: string;
+}) {
+  const hookT = useTheme();
+  const hookIsDark = useIsDarkTheme();
+  const T = propT ?? hookT;
+  const isDark = propIsDark ?? hookIsDark;
   const isClosedPosition = item.recordKind === 'closed-position';
 
   if (isClosedPosition) {
@@ -928,7 +938,7 @@ const HistoryItemRow = memo(function HistoryItemRow({ item, T, isDark, currency 
  * Closed-position card — mirrors the open-position card on the Trade screen,
  * but renders the *final* close price and close P&L instead of streaming live values.
  */
-function ClosedPositionRow({ item, T, isDark, currency }: { item: HistoryRow; T: ThemeColors; isDark: boolean; currency: string }) {
+const ClosedPositionRow = memo(function ClosedPositionRow({ item, T, isDark, currency }: { item: HistoryRow; T: ThemeColors; isDark: boolean; currency: string }) {
   const symbol = item.symbolRaw ?? parseLine1(item.line1).symbol;
   const sideRaw = (item.sideRaw ?? '').toLowerCase();
   const isBuy = sideRaw === 'buy';
@@ -1016,12 +1026,12 @@ function ClosedPositionRow({ item, T, isDark, currency }: { item: HistoryRow; T:
       </View>
     </View>
   );
-}
+});
 
 /**
  * Reusable UI component displaying a small colored badge or pill with a specific metric value (e.g., profit/loss amount).
  */
-function MetricPill({
+const MetricPill = memo(function MetricPill({
   label, value, icon, tone, T, isDark, onPress,
 }: {
   label: string; value: string;
@@ -1087,7 +1097,7 @@ function MetricPill({
       </Text>
     </View>
   );
-}
+});
 
 function parseLine1(line1: string) {
   const parts = line1.trim().split(/\s+/);
@@ -1095,7 +1105,7 @@ function parseLine1(line1: string) {
   const sideRaw = parts[1] ?? '';
   const volumeRaw = parts[2] ?? '';
   const side = sideRaw.trim();
-  const hasVolume = Number.isFinite(Number(volumeRaw));
+  const hasVolume = volumeRaw.trim() !== '' && Number.isFinite(Number(volumeRaw));
   const volume = hasVolume ? Number(volumeRaw).toFixed(2) : '';
   return { symbol, side, volume };
 }
@@ -1202,7 +1212,7 @@ const mpS = StyleSheet.create({
   metricValue: { fontSize: 14, fontWeight: '600', textAlign: 'center', fontVariant: ['tabular-nums'] },
 });
 
-function makeStyles(T: ThemeColors, isDark: boolean) {
+function createHistoryStyles(T: ThemeColors, isDark: boolean) {
   const cardBg = T.glass2;
 
   const accountSummaryCardBg = isDark ? '#1E1E1E' : cardBg; // Matches the app dark card tone.
@@ -1279,13 +1289,23 @@ function makeStyles(T: ThemeColors, isDark: boolean) {
     topControlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
     iconButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     segment: { flex: 1, minWidth: 0, flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 0.5, borderColor: T.border, backgroundColor: T.glass1 },
-    segmentButton: { flex: 1, minWidth: 0, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+    segmentButton: { flex: 1, minWidth: 0, minHeight: 36, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+    segmentButtonWide: { flex: 1.45 },
     segmentButtonActive: { backgroundColor: isDark ? T.glass3 : T.glass2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 2, elevation: 1 },
-    segmentText: { fontSize: 13, fontWeight: '600' },
+    segmentText: { fontSize: 12.5, fontWeight: '600', textAlign: 'center' },
     metricsRow: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     sectionHeader: { marginTop: spacing.lg, marginHorizontal: spacing.md, paddingVertical: 8, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
     sectionTitle: { fontSize: 19, fontWeight: '600', letterSpacing: 0 },
     sectionMeta: { marginTop: 2, fontSize: 13, fontWeight: '500' },
     emptyText: { marginTop: spacing.lg, textAlign: 'center', fontSize: 13 },
   });
+}
+
+const DARK_HISTORY_STYLES = createHistoryStyles(GDark, true);
+const LIGHT_HISTORY_STYLES = createHistoryStyles(GLight, false);
+
+function makeStyles(T: ThemeColors, isDark: boolean) {
+  if (T === GDark && isDark) return DARK_HISTORY_STYLES;
+  if (T === GLight && !isDark) return LIGHT_HISTORY_STYLES;
+  return createHistoryStyles(T, isDark);
 }

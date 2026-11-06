@@ -2,7 +2,7 @@
   "expo": {
     "name": "RTX5",
     "slug": "rtx5-app",
-    "version": "1.0.0",
+    "version": "1.1.62",
     "platforms": [
       "ios",
       "android"
@@ -13,18 +13,25 @@
     },
     "orientation": "default",
     "icon": "./assets/adaptive-icon.png",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "scheme": "rtx5",
+    "backgroundColor": "#0a0c10",
     "splash": {
       "image": "./assets/adaptive-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2d2c31"
+      "backgroundColor": "#0a0c10"
     },
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "rtx5",
     "updates": {
-      "enabled": false,
+      "enabled": true,
       "checkAutomatically": "NEVER",
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://otadeploy.yopips.com/manifest",
+      "requestHeaders": {
+        "expo-channel-name": "yoforex-rtx5",
+        "expo-app-id": "b83d7191-d5ac-4b58-b850-8979759fe290",
+        "xprem-branch": ""
+      }
     },
     "ios": {
       "bundleIdentifier": "com.rtx5.trading",
@@ -41,13 +48,18 @@
     },
     "android": {
       "package": "com.rtx5.app",
+      "backgroundColor": "#0a0c10",
       "icon": "./assets/android-icon.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-adaptive-foreground.png",
-        "backgroundColor": "#2d2c31"
+        "backgroundColor": "#0a0c10"
+      },
+      "splash": {
+        "image": "./assets/adaptive-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0a0c10"
       },
       "softwareKeyboardLayoutMode": "resize",
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "INTERNET"
@@ -55,6 +67,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/adaptive-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0c10"
+        }
+      ],
       "expo-secure-store",
       [
         "expo-image-picker",
@@ -79,6 +99,12 @@
           ]
         }
       ],
+      [
+        "expo-updates",
+        {
+          "username": "yoforex"
+        }
+      ],
       "./withAdiRegistration.js",
       "./withNetworkSecurityConfig.js",
       "./withAndroidLauncherIcons.js",
@@ -98,7 +124,10 @@
       "router": {
         "origin": false
       },
-      "sentryDsn": ""
+      "sentryDsn": "",
+      "eas": {
+        "projectId": "092a58db-dea9-469a-a383-f27300598812"
+      }
     },
     "owner": "yoforex-organisation"
   }

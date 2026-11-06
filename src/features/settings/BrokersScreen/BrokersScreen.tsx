@@ -42,7 +42,7 @@ import { useBrokerDirectory } from '../../../query/broker';
 import { selectGuestBroker } from '../../../services/selectGuestBroker';
 import { getPublicBrokerContext } from '../../../state/publicBrokerContext';
 import { openAuthFlow } from '../../trade/authFlowState';
-import { switchTcpBroker, type ValidatedBrokerServer } from '../../../api/broker';
+import { type ValidatedBrokerServer } from '../../../api/broker';
 import {
   brokersLaunchController,
   hideBrokersLaunch,
@@ -305,20 +305,17 @@ function BrokerDirectoryScreen({ isScreenFocused, onSelectBroker, onBack, select
       return;
     }
     const selection = toBrokerDetailLaunchSelection(broker);
-    const matchingRecord = brokerDirectory?.selectableServers.find(row => row.broker_id === broker.brokerId);
-    void switchTcpBroker(matchingRecord ?? { brokerId: broker.brokerId, name: broker.name }).finally(() => {
-      void selectedBrokerHealthGate.run({
-        serverUrl: broker.serverUrl,
-        onAvailable: () => {
-          if (!brokerPickerFocusedRef.current) return;
-          // Open the broker account form after validating the selected server.
-          openBrokerDetail(selection);
-        },
-        onUnavailable: () => {
-          if (!brokerPickerFocusedRef.current) return;
-          Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
-        },
-      });
+    void selectedBrokerHealthGate.run({
+      serverUrl: broker.serverUrl,
+      onAvailable: () => {
+        if (!brokerPickerFocusedRef.current) return;
+        // Open the broker account form after validating the selected server.
+        openBrokerDetail(selection);
+      },
+      onUnavailable: () => {
+        if (!brokerPickerFocusedRef.current) return;
+        Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
+      },
     });
   };
 
@@ -504,38 +501,6 @@ function BrokerDirectoryScreen({ isScreenFocused, onSelectBroker, onBack, select
             </View>
           }
         />
-
-        {/* ── Footer ── */}
-        <Pressable
-          style={styles.footerBtn}
-          onPress={() => {
-            const selection: BrokerDetailLaunchSelection = {
-              brokerId: 'custom',
-              brokerName: t("Can't find your broker?"),
-              brokerServer: '',
-              brokerServerUrl: '',
-              brokerLogoUrl: '',
-              brokerDomain: '',
-            };
-            void selectedBrokerHealthGate.run({
-              serverUrl: selection.brokerServerUrl,
-              onAvailable: () => {
-                if (!brokerPickerFocusedRef.current) return;
-                openBrokerDetail(selection);
-              },
-              onUnavailable: () => {
-                if (!brokerPickerFocusedRef.current) return;
-                Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
-              },
-            });
-          }}
-          activateOnPressIn
-          latencyLabel="brokers.custom"
-          unstable_pressDelay={0}
-        >
-          <Ionicons name="add-circle-outline" size={19} color={T.text} />
-          <Text style={styles.footerText}>{t("Can't find your broker?")}</Text>
-        </Pressable>
       </View>
     </Screen>
   );
@@ -568,9 +533,6 @@ function BrokerDirectoryCardContent({
       />
       <View style={styles.brokerInfo}>
         <Text style={styles.brokerName} numberOfLines={1}>{broker.name}</Text>
-        <View style={styles.brokerIdRow}>
-          <Text style={styles.brokerIdLabel} numberOfLines={1}>{broker.brokerId}</Text>
-        </View>
         {broker.selectable ? (
           <BrokerDirectoryHealthBadge
             broker={broker}

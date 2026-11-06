@@ -97,6 +97,10 @@ export function makePendingGatewayHarness() {
     StaleBrokerSessionError, apiClient, assertActivePendingProtectionAllowed: () => {},
     createTradeIdempotencyKey, createUuidV4, createTradingApiError, normalizePositiveSafeIntegerPathSegment,
     normalizePendingOrderReadType, pendingExpiry, ...store,
+    BIN_ACTION_PLACE_PENDING: 2, BIN_ACTION_MODIFY_PENDING: 5, BIN_ACTION_CANCEL_PENDING: 6,
+    BIN_FLAG_CLEAR_SL: 4, BIN_FLAG_CLEAR_TP: 8,
+    encodePendingOrderSubType: () => 2,
+    executeBinaryOrderAsHttpResponse: async () => null,
   };
   const mutations = loadProductionModule<typeof import('../../src/api/orders/pendingOrders')>('src/api/orders/pendingOrders.ts', common);
   const placement = loadProductionModule<typeof import('../../src/api/orders/placePendingOrder')>('src/api/orders/placePendingOrder.ts', {

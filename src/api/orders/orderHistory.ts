@@ -49,6 +49,9 @@ export const normalizeOrderHistoryRow = (value: unknown): LoginOrder => {
   return normalized as unknown as LoginOrder;
 };
 
+const isOrderHistoryFallbackStatus = (status: number): boolean =>
+  status === 400 || status === 404 || status === 405 || status === 501;
+
 /** Gateway pending-order history, always addressed to the selected account. */
 export async function fetchPendingOrderHistory(
   login: number, range: { from?: number; to?: number } = {},
@@ -60,7 +63,30 @@ export async function fetchPendingOrderHistory(
     throw new Error('Order-history dates must be Unix seconds in ascending order.');
   }
   const response = await apiClient(`/orders/history/${login}?from=${from}&to=${to}`);
-  if (!response.ok) throw createTradingApiError(response.status, await response.json().catch(() => ({})));
+  if (!response.ok) {
+    if (isOrderHistoryFallbackStatus(response.status)) {
+      try {
+        const accountOrders = await fetchAllAccountOrders();
+        return accountOrders.filter(
+          (order) => order.account_login == null || Number(order.account_login) === login,
+        );
+      } catch {
+        const fallbackResp = await apiClient(`/orders/${login}?limit=500`);
+        if (fallbackResp.ok) {
+          const fallbackJson = await fallbackResp.json().catch(() => []);
+          const fallbackRows = Array.isArray(fallbackJson)
+            ? fallbackJson
+            : Array.isArray(fallbackJson?.data)
+              ? fallbackJson.data
+              : [];
+          return fallbackRows.map((row: UnknownRecord) =>
+            normalizeOrderHistoryRow({ ...row, account_login: login }),
+          );
+        }
+      }
+    }
+    throw createTradingApiError(response.status, await response.json().catch(() => ({})));
+  }
   const json = await response.json();
   const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : null;
   if (!rows) throw createTradingApiError(502, { message: 'Order history must be an array.' });

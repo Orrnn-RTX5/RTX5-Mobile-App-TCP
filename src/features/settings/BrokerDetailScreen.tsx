@@ -188,6 +188,21 @@ const formatBrokerOptionName = (brokerSymbol: string, brokerName: string) => {
   return name.toLowerCase().includes(symbol.toLowerCase()) ? name : `${symbol} ${name}`;
 };
 
+const sanitizeBrokerServerLabel = (rawServer: string, fallbackName: string) => {
+  const cleaned = String(rawServer || '')
+    .replace(/\s*\((?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\)\s*/g, '')
+    .replace(/\s*\([^)]*:\d+\)\s*/g, '')
+    .trim();
+  if (
+    !cleaned
+    || /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(cleaned)
+    || /^[a-z0-9.-]+\.[a-z]{2,}:\d+$/i.test(cleaned)
+  ) {
+    return fallbackName;
+  }
+  return cleaned;
+};
+
 const buildServerOptionFromBrokerServer = (broker: BrokerServer): ServerOption | null => {
   if (broker.enabled === false) {
     return null;
@@ -195,7 +210,7 @@ const buildServerOptionFromBrokerServer = (broker: BrokerServer): ServerOption |
 
   const brokerId = String(broker.broker_id ?? '').trim();
   const brokerName = String(broker.broker_name ?? '').trim() || brokerId;
-  const serverLabel = String(broker.server ?? '').trim() || brokerName;
+  const serverLabel = sanitizeBrokerServerLabel(String(broker.server ?? '').trim(), brokerName) || brokerName;
   const resolution = resolveBrokerEndpointSet(broker);
   if (!resolution.ok) return null;
   const exactServerUrl = normalizeBrokerServerUrl(broker.server_url);
@@ -356,7 +371,7 @@ function BrokerDetailInteractiveContent({
   const brokerName = params.brokerName ? String(params.brokerName) : t('Broker');
   const brokerIdSlug = params.brokerId ? String(params.brokerId) : '';
   const initialServer = params.brokerServer
-    ? String(params.brokerServer)
+    ? sanitizeBrokerServerLabel(String(params.brokerServer), brokerName)
     : brokerName;
   const initialServerUrl = normalizeBrokerServerUrl(
     params.brokerServerUrl ? String(params.brokerServerUrl) : '',
@@ -1002,18 +1017,8 @@ function BrokerDetailInteractiveContent({
                 <View style={styles.brokerSummaryBody}>
                   <View style={styles.brokerKickerRow}>
                     <Text style={styles.brokerEyebrow}>{t('Selected broker')}</Text>
-                    <View style={styles.readyPill}>
-                      <View style={styles.readyDot} />
-                      <Text style={styles.readyText}>{t('Ready')}</Text>
-                    </View>
                   </View>
                   <Text style={styles.brokerName} numberOfLines={1}>{selectedBrokerDisplayName}</Text>
-                  <View style={styles.brokerServerPill}>
-                    <Ionicons name="server-outline" size={15} color={T.textSub} />
-                    <Text style={styles.brokerServerLine} numberOfLines={1}>
-                      {brokerServerLabel}
-                    </Text>
-                  </View>
                 </View>
               </View>
             </View>
@@ -1097,14 +1102,7 @@ function BrokerDetailInteractiveContent({
                   <View style={styles.panelHeader}>
                     <View style={styles.panelTitleTopRow}>
                       <View style={styles.panelTitleRow}>
-                        <View style={styles.panelIconMark}>
-                          <Ionicons name="key-outline" size={18} color="#2563EB" />
-                        </View>
                         <Text style={styles.panelEyebrow}>{t('Existing account')}</Text>
-                      </View>
-                      <View style={styles.securePill}>
-                        <Ionicons name="shield-checkmark-outline" size={14} color={T.trading.profit} />
-                        <Text style={styles.secureText}>{t('Secure')}</Text>
                       </View>
                     </View>
                     <Text style={styles.sectionTitle} numberOfLines={1}>

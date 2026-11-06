@@ -2,6 +2,7 @@
  * Core module: market.ts
  */
 
+import { useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { commitApiJson } from '../api/apiClient';
 import { fetchInstrumentCatalogResponse, primeInstrumentMetaCacheFromCatalogPayload } from '../api/instruments';
@@ -11,6 +12,7 @@ import {
   useActiveBrokerQuerySession,
 } from './authenticatedQueryScope';
 import { useUserPreferences } from '../state/userPreferences';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../state/publicBrokerContext';
 import {
   getOrrnnDemoPublicMarketCatalog,
   isOrrnnDemoPublicMarketSelection,
@@ -21,6 +23,11 @@ export function useMarketSymbols(enabled = true) {
   const session = useActiveBrokerQuerySession();
   const isLoggedIn = useUserPreferences((state) => state.isLoggedIn);
   const selectedBrokerId = useUserPreferences((state) => state.brokerId);
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const isPublicDemoMarket = isOrrnnDemoPublicMarketSelection({
     brokerId: selectedBrokerId,
     isLoggedIn,

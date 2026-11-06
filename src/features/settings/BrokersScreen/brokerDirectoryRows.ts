@@ -173,14 +173,22 @@ function isRawNetworkEndpoint(value: string) {
   );
 }
 
+function stripNetworkEndpointSuffix(value: string) {
+  return value
+    .replace(/\s*\((?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\)\s*/g, '')
+    .replace(/\s*\([^)]*:\d+\)\s*/g, '')
+    .trim();
+}
+
 function formatVisibleServerName(broker: BrokerServer) {
-  const displayServer = broker.display_server?.trim() || '';
-  if (displayServer) return displayServer;
-  const server = broker.server?.trim() || '';
+  const baseName = stripNetworkEndpointSuffix(broker.broker_name?.trim() || broker.broker_id);
+  const displayServer = stripNetworkEndpointSuffix(broker.display_server?.trim() || '');
+  if (displayServer && !isRawNetworkEndpoint(displayServer)) {
+    return displayServer;
+  }
+  const server = stripNetworkEndpointSuffix(broker.server?.trim() || '');
   if (!server || isRawNetworkEndpoint(server)) {
-    const tcpAddr = broker.tcp_addr?.trim() || '';
-    const baseName = broker.broker_name?.trim() || broker.broker_id;
-    return tcpAddr ? `${baseName} (${tcpAddr})` : baseName;
+    return baseName;
   }
 
   return server;

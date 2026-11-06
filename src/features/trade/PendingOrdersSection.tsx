@@ -82,7 +82,13 @@ function PendingOrderRow({ order, active, namespace }: { order: PendingOrderRead
   </FastPressable>;
 }
 
-export function PendingOrdersSection({ active }: { active: boolean }) {
+export function PendingOrdersSection({
+  active,
+  hideHeader = false,
+}: {
+  active: boolean;
+  hideHeader?: boolean;
+}) {
   const T = useTheme();
   const { t } = useTranslation();
   const session = useActiveBrokerQuerySession();
@@ -132,21 +138,23 @@ export function PendingOrdersSection({ active }: { active: boolean }) {
     runImmediateAction('trade.pendingBulk.open', () => showTradeActionSheet(config));
   };
   return <View style={styles.container}>
-    <View style={[styles.header, { borderBottomColor: T.border }]}>
-      <View style={styles.headingText}>
-        <Text accessibilityRole="header" style={[styles.title, { color: T.text }]}>{t('Pending Orders')}</Text>
-        <Text style={[styles.sectionMeta, { color: T.textMuted }]}>
-          {isPending && active ? t('Loading…') : `${data.length} ${t('pending')}`}
-        </Text>
+    {!hideHeader ? (
+      <View style={[styles.header, { borderBottomColor: T.border }]}>
+        <View style={styles.headingText}>
+          <Text accessibilityRole="header" style={[styles.title, { color: T.text }]}>{t('Pending Orders')}</Text>
+          <Text style={[styles.sectionMeta, { color: T.textMuted }]}>
+            {isPending && active ? t('Loading…') : `${data.length} ${t('pending')}`}
+          </Text>
+        </View>
+        {!investorReadOnly ? <FastPressable accessibilityRole="button" accessibilityLabel="Pending order bulk options"
+          disabled={!active || data.length === 0} accessibilityState={{ disabled: !active || data.length === 0 }}
+          activateOnPressIn activateOnTouchStart latencyLabel="trade.pendingBulk.open"
+          onPress={showBulkSheet}
+          style={({ pressed }) => [styles.bulkButton, { borderColor: T.border, backgroundColor: pressed ? T.glass3 : T.glass1, opacity: active && data.length ? 1 : 0.45 }]}>
+          <Text style={[styles.bulkButtonText, { color: T.textMuted }]}>{t('Bulk')}</Text>
+        </FastPressable> : null}
       </View>
-      {!investorReadOnly ? <FastPressable accessibilityRole="button" accessibilityLabel="Pending order bulk options"
-        disabled={!active || data.length === 0} accessibilityState={{ disabled: !active || data.length === 0 }}
-        activateOnPressIn activateOnTouchStart latencyLabel="trade.pendingBulk.open"
-        onPress={showBulkSheet}
-        style={({ pressed }) => [styles.bulkButton, { borderColor: T.border, backgroundColor: pressed ? T.glass3 : T.glass1, opacity: active && data.length ? 1 : 0.45 }]}>
-        <Text style={[styles.bulkButtonText, { color: T.textMuted }]}>{t('Bulk')}</Text>
-      </FastPressable> : null}
-    </View>
+    ) : null}
     {isError ? <FastPressable accessibilityRole="button" accessibilityLabel={t('Retry pending orders')}
       style={[styles.errorMessage, { backgroundColor: T.glass2, borderColor: T.border }]}
       onPress={() => { void refetch(); }}>

@@ -67,7 +67,9 @@ const evaluatePriceScaleRuntime = () => {
   const priceScaleOptions: Array<Record<string, any>> = [];
   const autoScaleCalls: boolean[] = [];
   const visibleRangeCalls: Array<{ from: number; to: number }> = [];
+  const logicalRangeCalls: Array<{ from: number; to: number }> = [];
   let visibleRange = { from: 100, to: 200 };
+  let logicalRange = { from: 20, to: 88 };
   let badgeRefreshes = 0;
   const priceScale = {
     applyOptions: (options: Record<string, any>) => priceScaleOptions.push(options),
@@ -79,12 +81,20 @@ const evaluatePriceScaleRuntime = () => {
     },
     width: () => 64,
   };
+  const timeScale = {
+    getVisibleLogicalRange: () => ({ ...logicalRange }),
+    setVisibleLogicalRange: (range: { from: number; to: number }) => {
+      logicalRange = { ...range };
+      logicalRangeCalls.push({ ...range });
+    },
+  };
   const chart = {
     applyOptions: (options: Record<string, any>) => chartOptions.push(options),
     priceScale: (id: string) => {
       assert.equal(id, 'right');
       return priceScale;
     },
+    timeScale: () => timeScale,
   };
   const series = {
     coordinateToPrice: (coordinate: number) => 200 - coordinate / 3,
@@ -120,6 +130,8 @@ const evaluatePriceScaleRuntime = () => {
     badgeRefreshes: () => badgeRefreshes,
     chartHost,
     chartOptions,
+    logicalRange: () => ({ ...logicalRange }),
+    logicalRangeCalls,
     overwriteVisibleRange: (range: { from: number; to: number }) => {
       visibleRange = { ...range };
     },
@@ -223,6 +235,25 @@ test('body vertical drag shifts price without changing its span and retains the 
   assert.equal(snapshot.to, 210);
   assert.equal(snapshot.referenceSpan, 100);
   assert.equal(harness.window.shouldSuppressPreviewPaneTap(102, 130), true);
+});
+
+test('body 2D diagonal and horizontal-then-vertical drag shifts both price and time scales smoothly', () => {
+  const harness = evaluatePriceScaleRuntime();
+  harness.window.installPreviewPriceScaleInteractions();
+
+  // Start at (100, 100), move horizontally first to (134, 101), then diagonally to (168, 130)
+  harness.chartHost.dispatch('pointerdown', makePointerEvent(100, 100));
+  harness.chartHost.dispatch('pointermove', makePointerEvent(134, 101));
+  harness.chartHost.dispatch('pointermove', makePointerEvent(168, 130));
+  harness.chartHost.dispatch('pointerup', makePointerEvent(168, 130));
+
+  const priceRange = harness.visibleRange();
+  assert.equal(priceRange.from, 110);
+  assert.equal(priceRange.to, 210);
+
+  const logicalRange = harness.logicalRange();
+  assert.ok(logicalRange.from < 20, 'dragging right must shift visible logical range earlier');
+  assert.equal(logicalRange.to - logicalRange.from, 68);
 });
 
 test('manual price range reapplies after data replacement and auto-scale clears ownership', () => {

@@ -60,6 +60,7 @@ function tradeStyles(source: string, isDark: boolean): Record<string, any> {
   runInNewContext(code, { exports, require: (name: string) => {
     if (name === 'react-native') return { StyleSheet: { create: (styles: unknown) => styles } };
     if (name === '../../../ui/theme/index') return { spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } };
+    if (name === '../../../ui/theme/glass') return { GDark: {}, GLight: {} };
     throw new Error(`Unexpected styles dependency: ${name}`);
   } });
   return exports.makeTradeScreenStyles({}, isDark);
@@ -69,7 +70,7 @@ function flattenStyle(style: any): Record<string, any> {
   return Array.isArray(style) ? Object.assign({}, ...style.map(flattenStyle)) : style || {};
 }
 
-test('Trade details display the backend margin level and show zero for an unavailable value', () => {
+test('Trade details display the backend margin level when positions are open and hide open-trade metrics when flat', () => {
   for (const [marginLevel, expected] of [[87952.5, '87,952.50%'], [0, '0%'], [undefined, '0%'], [NaN, '0%']] as const) {
     const render = expression('src/features/trade/TradeScreen/SummaryHeader.tsx', 'TradeSummaryDetailsHeader', {
       React: { ...React, useContext: () => ({ marginLevel, currency: 'USD' }) },
@@ -79,8 +80,17 @@ test('Trade details display the backend margin level and show zero for an unavai
       formatMarginLevel,
       SummaryMetricRow: ({ label, value }: any) => React.createElement('Text', {}, label, ': ', value, ';'),
     });
-    const node = render({ positions: [], s: {}, T: {}, isDark: false, totalVolume: 0, onBulkPress: () => {} });
-    assert.ok(text(node).includes(`Margin Level: ${expected};`));
+    const openNode = render({ positions: [{ symbol: 'XAUUSD', swap: 0 }], s: {}, T: {}, isDark: false, totalVolume: 0.01, onBulkPress: () => {} });
+    assert.ok(text(openNode).includes(`Margin Level: ${expected};`));
+
+    const flatNode = render({ positions: [], s: {}, T: {}, isDark: false, totalVolume: 0, onBulkPress: () => {} });
+    const flatText = text(flatNode);
+    assert.ok(flatText.includes('Balance:'));
+    assert.ok(flatText.includes('Equity:'));
+    assert.ok(flatText.includes('Free Margin:'));
+    assert.ok(!/(?:^|;)Margin:/.test(flatText));
+    assert.ok(!flatText.includes('Margin Level:'));
+    assert.ok(!flatText.includes('Swap:'));
   }
 });
 

@@ -89,7 +89,7 @@ test('resolveLivePositionPrice uses quotes that are received recently even when 
   assert.equal(price, 1.2);
 });
 
-test('resolveLivePositionPnl recalculates a buy position from live bid ticks', () => {
+test('resolveLivePositionPnl returns the backend position pnl without frontend tick calculation', () => {
   const livePnl = resolveLivePositionPnl(
     {
       id: '2001',
@@ -106,10 +106,10 @@ test('resolveLivePositionPnl recalculates a buy position from live bid ticks', (
     { bid: 1.102, ask: 1.10215 },
   );
 
-  assert.equal(Number(livePnl.toFixed(2)), 25.35);
+  assert.equal(Number(livePnl.toFixed(2)), 12.5);
 });
 
-test('resolveLivePositionPnl recalculates a sell position from live ask ticks', () => {
+test('resolveLivePositionPnl returns the backend sell position pnl without frontend tick calculation', () => {
   const livePnl = resolveLivePositionPnl(
     {
       id: '2002',
@@ -126,10 +126,10 @@ test('resolveLivePositionPnl recalculates a sell position from live ask ticks', 
     { bid: 1.2876, ask: 1.2875 },
   );
 
-  assert.equal(Number(livePnl.toFixed(2)), 24.4);
+  assert.equal(Number(livePnl.toFixed(2)), 19.4);
 });
 
-test('sumLivePositionPnl aggregates recalculated row pnl values across symbols', () => {
+test('sumLivePositionPnl aggregates backend row pnl values across symbols without frontend math', () => {
   const total = sumLivePositionPnl(
     [
       {
@@ -162,14 +162,10 @@ test('sumLivePositionPnl aggregates recalculated row pnl values across symbols',
     },
   );
 
-  assert.equal(Number(total.toFixed(2)), 105.12);
+  assert.equal(Number(total.toFixed(2)), 60.25);
 });
 
-test('crypto positions ignore an implausible backend contractSize on the quote', () => {
-  // BTC contract is 1 coin; some backend quote payloads carry a generic
-  // default (100), which inflated the chart's live P/L label 100x. The
-  // position snapshot deliberately provides no calibration data so the
-  // volume x contract fallback is exercised.
+test('crypto positions return backend pnl directly and ignore quote contractSize', () => {
   const position = {
     id: '2167772',
     symbol: 'BTCUSD',
@@ -177,23 +173,15 @@ test('crypto positions ignore an implausible backend contractSize on the quote',
     volume: 0.01,
     openPrice: 64010.02,
     currentPrice: 64010.02,
-    pnl: 0,
+    pnl: 3.2835,
     swap: 0,
     openTime: '2026-08-05T17:34:27.000Z',
   };
 
-  const inflated = resolveLivePositionPnl(position, {
+  const result = resolveLivePositionPnl(position, {
     bid: 64338.37,
     ask: 64353.37,
     contractSize: 100,
   });
-  // (64338.37 - 64010.02) * 0.01 lots * 1 coin = +3.2835
-  assert.equal(Number(inflated.toFixed(4)), 3.2835);
-
-  // A plausible sub-unit contract size still wins (mBTC-style feeds).
-  const subUnit = resolveLivePositionPnl(
-    { ...position, id: '2167773' },
-    { bid: 64338.37, ask: 64353.37, contractSize: 0.1 },
-  );
-  assert.equal(Number(subUnit.toFixed(5)), 0.32835);
+  assert.equal(Number(result.toFixed(4)), 3.2835);
 });

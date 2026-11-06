@@ -8,7 +8,7 @@ test('after-paint work runs once, and cancellation works before and after rAF', 
   const frames = new Map<number, FrameRequestCallback>();
   let id = 0;
   globalThis.requestAnimationFrame = callback => { frames.set(++id, callback); return id; };
-  globalThis.cancelAnimationFrame = key => { frames.delete(key); };
+  globalThis.cancelAnimationFrame = key => { if (typeof key === 'number') frames.delete(key); };
   let calls = 0;
   const cancels: Array<() => void> = [];
   try {

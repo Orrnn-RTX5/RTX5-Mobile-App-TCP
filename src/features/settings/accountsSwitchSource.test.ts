@@ -140,7 +140,7 @@ test('accounts screen uses broker branding and opens long-press delete for other
   assert.doesNotMatch(source, /AppLogo/);
   assert.match(source, /import \{[^}]*\bImage\b[^}]*\} from 'react-native'/);
   // Other-accounts list is virtualized: render the on-screen rows, lazy-render the rest on scroll.
-  assert.match(source, /<FlatList[\s\S]*data=\{otherRows\}[\s\S]*initialNumToRender=/);
+  assert.match(source, /<FlatList[\s\S]*data=\{(?:isScreenFocused \? otherRows : otherRows\.slice\(0, 2\)|otherRows)\}[\s\S]*initialNumToRender=/);
   assert.match(source, /import \{ useBrokerConfig, useBrokerServers \} from '\.\.\/\.\.\/query\/broker'/);
   assert.match(source, /const buildBrokerLogoIndex = \(brokerServers\?: readonly BrokerServer\[\]\): BrokerLogoIndex => \{/);
   assert.match(source, /byBrokerName: Map<string, string>/);

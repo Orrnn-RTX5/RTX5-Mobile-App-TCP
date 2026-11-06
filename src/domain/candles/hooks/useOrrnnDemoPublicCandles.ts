@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { orrnnDemoPublicMarketSocket } from '../../../api/ws/orrnnDemoPublicMarketSocket';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../../../state/publicBrokerContext';
 import {
   getOrrnnDemoPublicCandleQueryOptions,
   getOrrnnDemoPublicCandleQueryKey,
@@ -52,6 +53,11 @@ export function useOrrnnDemoPublicCandles(
   timeframe: string,
   active: boolean,
 ) {
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const selection = useMemo(
     () => resolveOrrnnDemoPublicCandleSelection(symbol, timeframe),
     [symbol, timeframe, ORRNN_DEMO_PUBLIC_CACHE_NAMESPACE],

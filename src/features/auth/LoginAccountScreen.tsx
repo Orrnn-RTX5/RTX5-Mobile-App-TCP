@@ -41,6 +41,16 @@ export function LoginAccountScreen(props: Props) {
   };
   const initials = props.brokerName.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const hasLogo = Boolean(props.logoUrl && !logoFailed);
+  const visibleServerName = useMemo(() => {
+    const cleaned = String(props.serverName || '')
+      .replace(/\s*\((?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\)\s*/g, '')
+      .replace(/\s*\([^)]*:\d+\)\s*/g, '')
+      .trim();
+    if (!cleaned || /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(cleaned) || /^[a-z0-9.-]+\.[a-z]{2,}:\d+$/i.test(cleaned)) {
+      return props.brokerName || props.brokerId;
+    }
+    return cleaned;
+  }, [props.brokerId, props.brokerName, props.serverName]);
   const recovery = () => {
     if (typeof props.recoveryUrl === 'string' && /^https:\/\//.test(props.recoveryUrl)) void Linking.openURL(props.recoveryUrl);
     else Alert.alert(t('Forgot password?'), t('Contact your broker for account recovery.'));
@@ -68,8 +78,8 @@ export function LoginAccountScreen(props: Props) {
         <ScrollView ref={scroll} style={styles.scrollViewport} contentContainerStyle={styles.scrollContent} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardShouldPersistTaps="always" canCancelContentTouches={Platform.OS === 'ios'} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>
           <View style={styles.brokerSummaryCard}><View style={styles.brokerSummaryTop}>
             <View style={styles.brokerLogoMark}>{hasLogo ? <Image source={{ uri: props.logoUrl }} style={styles.brokerLogoImage} resizeMode="contain" onError={() => setLogoFailed(true)} /> : <Text style={styles.brokerLogoText}>{initials}</Text>}</View>
-            <View style={styles.brokerSummaryBody}><View style={styles.brokerKickerRow}><Text style={styles.brokerEyebrow}>{t('Selected broker')}</Text><View style={styles.readyPill}><View style={styles.readyDot} /><Text style={styles.readyText}>{t('Ready')}</Text></View></View>
-              <Text style={styles.brokerName} numberOfLines={1}>{props.brokerName}</Text><View style={styles.brokerServerPill}><Ionicons name="server-outline" size={15} color={T.textSub} /><Text style={styles.brokerServerLine} numberOfLines={1}>{props.serverName}</Text></View>
+            <View style={styles.brokerSummaryBody}><View style={styles.brokerKickerRow}><Text style={styles.brokerEyebrow}>{t('Selected broker')}</Text></View>
+              <Text style={styles.brokerName} numberOfLines={1}>{props.brokerName}</Text>
             </View>
           </View></View>
           {feedback}
@@ -77,10 +87,10 @@ export function LoginAccountScreen(props: Props) {
             <View style={[styles.optionIcon, styles.optionIconDemo]}><Ionicons name="school" size={18} color="#fff" /></View><View style={styles.optionTextWrap}><Text style={styles.optionTitle}>{t('Open a demo account')}</Text><Text style={styles.optionSub}>{t('To learn trading and to test your strategies')}</Text></View><Ionicons name="chevron-forward" size={18} color={T.textSub} />
           </Pressable></View> : <Text style={styles.optionSub}>{t('Demo signup is disabled. Login and guest browsing are available.')}</Text>}
           <View style={styles.loginPanel} onLayout={event => { positions.current.panel = event.nativeEvent.layout.y; }}>
-            <View style={styles.panelHeader}><View style={styles.panelTitleTopRow}><View style={styles.panelTitleRow}><View style={styles.panelIconMark}><Ionicons name="key-outline" size={18} color="#2563EB" /></View><Text style={styles.panelEyebrow}>{t('Existing account')}</Text></View><View style={styles.securePill}><Ionicons name="shield-checkmark-outline" size={14} color={T.trading.profit} /><Text style={styles.secureText}>{t('Secure')}</Text></View></View><Text style={styles.sectionTitle}>{t('Login to an existing account')}</Text></View>
+            <View style={styles.panelHeader}><View style={styles.panelTitleTopRow}><View style={styles.panelTitleRow}><Text style={styles.panelEyebrow}>{t('Existing account')}</Text></View></View><Text style={styles.sectionTitle}>{t('Login to an existing account')}</Text></View>
             <View style={styles.fieldGroup} onLayout={event => { positions.current.group = event.nativeEvent.layout.y; }}>
               {(['identity', 'password'] as const).map(key => <View key={key} style={styles.fieldBlock} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}><Text style={styles.inputLabel}>{t(key === 'identity' ? 'Login' : 'Password')}</Text><View style={styles.inputShell}><Ionicons name={key === 'identity' ? 'person-outline' : 'lock-closed-outline'} size={19} color={T.textMuted} />{input(key, styles.input)}{key === 'password' ? eye(styles.fieldIconButton) : null}</View></View>)}
-              <View style={styles.fieldBlock}><Text style={styles.inputLabel}>{t('Server')}</Text><Pressable style={styles.inputShell} accessibilityRole="button" accessibilityLabel={t('Select broker')} onPress={props.onChangeBroker}><Ionicons name="server-outline" size={19} color={T.textMuted} /><Text style={styles.serverValue} numberOfLines={1}>{props.serverName}</Text><Ionicons name="chevron-down" size={18} color={T.textSub} /></Pressable></View>
+              <View style={styles.fieldBlock}><Text style={styles.inputLabel}>{t('Server')}</Text><Pressable style={styles.inputShell} accessibilityRole="button" accessibilityLabel={t('Select broker')} onPress={props.onChangeBroker}><Ionicons name="server-outline" size={19} color={T.textMuted} /><Text style={styles.serverValue} numberOfLines={1}>{visibleServerName}</Text><Ionicons name="chevron-down" size={18} color={T.textSub} /></Pressable></View>
             </View>
             <View style={styles.formMetaRow}>{remember(styles, 'Save password')}<Pressable style={styles.forgotBtn} onPress={recovery} accessibilityRole="button"><Text style={styles.forgotText}>{t('Forgot password?')}</Text></Pressable></View>
             <Pressable activateOnPressIn latencyLabel="auth.login.submit" latencyBudgetMs={100} accessibilityRole="button" accessibilityState={{ disabled: props.disabled, busy: props.busy }} disabled={props.disabled} style={({ pressed }) => [styles.loginBtn, (pressed || props.disabled) && styles.loginBtnPressed]} onPress={props.onSubmit}>{submitContent || <Text style={styles.loginBtnText}>{t('Login')}</Text>}</Pressable>
@@ -98,7 +108,7 @@ export function LoginAccountScreen(props: Props) {
         {feedback}
         <View style={styles.fieldBlock}><Text style={styles.inputLabel}>{t('Broker Server')}</Text><View style={[styles.inputRow, styles.brokerInputRow]}>
           <View style={[styles.brokerAvatar, !hasLogo && styles.brokerAvatarFallback]}>{hasLogo ? <Image source={{ uri: props.logoUrl }} style={styles.brokerAvatarImage} resizeMode="contain" onError={() => setLogoFailed(true)} /> : <Text style={styles.brokerAvatarInitials}>{initials}</Text>}</View>
-          <View style={styles.fieldValueColumn}><Text style={[styles.input, styles.brokerInput]}>{props.brokerId}</Text><Text style={styles.brokerInlineHint} numberOfLines={1}>{props.serverName}</Text><View style={styles.brokerHealthStatusSlot} /></View>
+          <View style={styles.fieldValueColumn}><Text style={[styles.input, styles.brokerInput]}>{props.brokerId}</Text><Text style={styles.brokerInlineHint} numberOfLines={1}>{visibleServerName}</Text><View style={styles.brokerHealthStatusSlot} /></View>
           <Pressable style={styles.brokerPickerBtn} accessibilityRole="button" accessibilityLabel={t('Select broker')} onPress={props.onChangeBroker}><Ionicons name="chevron-down" size={19} color={T.accent} /></Pressable>
         </View></View><View style={styles.fieldDivider} />
         {(['identity', 'password'] as const).map(key => <React.Fragment key={key}><View style={styles.fieldBlock} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}><Text style={styles.inputLabel}>{t(key === 'identity' ? 'Login ID' : 'Password')}</Text><View style={styles.inputRow}><Ionicons name={key === 'identity' ? 'person-outline' : 'lock-closed-outline'} size={21} color={T.textSub} style={styles.inputLeadingIcon} />{input(key, [styles.input, styles.stackedInput])}{key === 'password' ? eye(styles.eyeIconBtn) : null}</View></View><View style={styles.fieldDivider} /></React.Fragment>)}

@@ -31,7 +31,16 @@ import type { TradeScreenStyles } from './styles';
 import type { AccountSummary as ApiAccountSummary } from '../../../api/account';
 import { formatMarginLevel } from '../../../api/account';
 
-const EMPTY_TRADE_LIVE_ACCOUNT = Object.freeze({
+const EMPTY_TRADE_LIVE_ACCOUNT: {
+  readonly balance: 0;
+  readonly floating: 0;
+  readonly equity: 0;
+  readonly margin: 0;
+  readonly margin_free: 0;
+  readonly margin_level: 0;
+  readonly metricFlags?: Partial<Record<'balance' | 'floating' | 'equity' | 'margin' | 'margin_free' | 'margin_level', boolean>>;
+  readonly staleMetricFlags?: Partial<Record<'balance' | 'floating' | 'equity' | 'margin' | 'margin_free' | 'margin_level', boolean>>;
+} = Object.freeze({
   balance: 0,
   floating: 0,
   equity: 0,
@@ -125,7 +134,31 @@ const LiveUnrealizedPnLHeader = React.memo(({ account, s, T, isDark, detailsVisi
  * under the pinned Floating P/L card, the same way the History screen's summary
  * details slide under its pinned Balance header.
  */
-export const TradeSummaryDetailsHeader = React.memo(({ positions, s, T, isDark, totalVolume, onBulkPress, scrollSummary = false }: { positions: PositionItem[]; s: TradeScreenStyles; T: ThemeColors; isDark: boolean; totalVolume: number; onBulkPress: () => void; scrollSummary?: boolean }) => {
+export const TradeSummaryDetailsHeader = React.memo(({
+  positions,
+  s,
+  T,
+  isDark,
+  totalVolume,
+  onBulkPress,
+  bulkDisabled: bulkDisabledProp,
+  scrollSummary = false,
+  activeSection = 'positions',
+  onSelectSection,
+  pendingOrdersCount = 0,
+}: {
+  positions: PositionItem[];
+  s: TradeScreenStyles;
+  T: ThemeColors;
+  isDark: boolean;
+  totalVolume: number;
+  onBulkPress: () => void;
+  bulkDisabled?: boolean;
+  scrollSummary?: boolean;
+  activeSection?: 'positions' | 'pending';
+  onSelectSection?: (section: 'positions' | 'pending') => void;
+  pendingOrdersCount?: number;
+}) => {
   const { t } = useTranslation();
   const account = React.useContext(TradeAccountSummaryContext);
   const detailsVisible = useUserPreferences((state) => state.tradeSummaryDetailsVisible);
@@ -135,11 +168,15 @@ export const TradeSummaryDetailsHeader = React.memo(({ positions, s, T, isDark, 
   const safeFreeMargin = Number.isFinite(account.freeMargin) ? account.freeMargin : 0;
   const safeMarginLevel = Number.isFinite(account.marginLevel) ? account.marginLevel : 0;
   const accountCurrency = account.currency || 'USD';
+  const hasOpenPositions = positions.length > 0;
 
   const totalSwap = useMemo(() => {
     return positions.reduce((sum: number, pos: any) => sum + (Number.isFinite(pos.swap) ? pos.swap : 0), 0);
   }, [positions]);
-  const bulkDisabled = positions.length === 0;
+  const isPositionsSection = activeSection === 'positions';
+  const isPendingSection = activeSection === 'pending';
+  const bulkDisabled =
+    bulkDisabledProp ?? (isPendingSection ? pendingOrdersCount === 0 : positions.length === 0);
 
   return (
     <>
@@ -159,34 +196,149 @@ export const TradeSummaryDetailsHeader = React.memo(({ positions, s, T, isDark, 
             {/* Keep Floating P/L as the pinned headline; equity belongs in the account breakdown. */}
             <SummaryMetricRow label={t('Balance')} currency={accountCurrency} value={fmt.decimal(safeBalance)} s={s} T={T} />
             <SummaryMetricRow label={t('Equity')} value={fmt.decimal(safeEquity)} s={s} T={T} />
-            <SummaryMetricRow label={t('Margin')} value={fmt.decimal(safeMargin)} s={s} T={T} />
+            {hasOpenPositions ? (
+              <SummaryMetricRow label={t('Margin')} value={fmt.decimal(safeMargin)} s={s} T={T} />
+            ) : null}
             <SummaryMetricRow label={t('Free Margin')} value={fmt.decimal(safeFreeMargin)} s={s} T={T} />
-            <SummaryMetricRow label={t('Margin Level')} value={formatMarginLevel(safeMarginLevel, fmt.decimal)} s={s} T={T} />
-            <SummaryMetricRow label={t('Swap')} value={fmt.pnl(totalSwap)} s={s} T={T} />
+            {hasOpenPositions ? (
+              <>
+                <SummaryMetricRow label={t('Margin Level')} value={formatMarginLevel(safeMarginLevel, fmt.decimal)} s={s} T={T} />
+                <SummaryMetricRow label={t('Swap')} value={fmt.pnl(totalSwap)} s={s} T={T} />
+              </>
+            ) : null}
 
             {account.credit > 0 ? <SummaryMetricRow label={t('Credit')} value={fmt.decimal(Number.isFinite(account.credit) ? account.credit : 0)} s={s} T={T} /> : null}
           </View>
         </View>
       ) : null}
 
-      <View style={[s.positionsHeader, { borderBottomColor: T.border }]}>
-        <View style={s.positionsHeaderLeft}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={s.positionsTitleRow}>
-              <Text style={[s.positionsTitle, { color: T.text }]}>{t('Positions')}</Text>
-            </View>
-            <Text style={[s.positionsMeta, { color: T.textMuted }]}>
-              {positions.length} {t('open')} • {(totalVolume || 0).toFixed(2)} {t('lots')}
-            </Text>
+      {onSelectSection ? (
+        <View style={[s.positionsHeader, { borderBottomColor: T.border }]}>
+          <View style={s.sectionSwitcher} accessibilityRole="tablist">
+            <FastPressable
+              latencyLabel="trade.section.positions"
+              accessibilityRole="tab"
+              accessibilityLabel={t('Positions')}
+              accessibilityState={{ selected: isPositionsSection }}
+              onPress={() => onSelectSection('positions')}
+              activateOnPressIn
+              activateOnTouchStart
+              unstable_pressDelay={0}
+              style={[s.sectionTab, isPositionsSection && s.sectionTabActive]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[s.sectionTabText, { color: isPositionsSection ? T.text : T.textMuted }]}
+              >
+                {t('Positions')}
+              </Text>
+              <View
+                style={[
+                  s.sectionBadge,
+                  {
+                    backgroundColor: isPositionsSection
+                      ? 'rgba(37,99,235,0.16)'
+                      : isDark
+                        ? 'rgba(255,255,255,0.06)'
+                        : 'rgba(15,23,42,0.06)',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.sectionBadgeText,
+                    { color: isPositionsSection ? '#3B82F6' : T.textMuted },
+                  ]}
+                >
+                  {positions.length}
+                </Text>
+              </View>
+            </FastPressable>
+
+            <FastPressable
+              latencyLabel="trade.section.pending"
+              accessibilityRole="tab"
+              accessibilityLabel={t('Pending Orders')}
+              accessibilityState={{ selected: isPendingSection }}
+              onPress={() => onSelectSection('pending')}
+              activateOnPressIn
+              activateOnTouchStart
+              unstable_pressDelay={0}
+              style={[s.sectionTab, isPendingSection && s.sectionTabActive]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[s.sectionTabText, { color: isPendingSection ? T.text : T.textMuted }]}
+              >
+                {t('Pending Orders')}
+              </Text>
+              <View
+                style={[
+                  s.sectionBadge,
+                  {
+                    backgroundColor: isPendingSection
+                      ? 'rgba(245,158,11,0.18)'
+                      : isDark
+                        ? 'rgba(255,255,255,0.06)'
+                        : 'rgba(15,23,42,0.06)',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.sectionBadgeText,
+                    { color: isPendingSection ? '#F59E0B' : T.textMuted },
+                  ]}
+                >
+                  {pendingOrdersCount}
+                </Text>
+              </View>
+            </FastPressable>
           </View>
+
+          <FastPressable
+            latencyLabel="trade.bulk.open"
+            accessibilityRole="button"
+            accessibilityLabel={t(isPendingSection ? 'Pending order bulk options' : 'Position bulk options')}
+            disabled={bulkDisabled}
+            accessibilityState={{ disabled: bulkDisabled }}
+            onPress={onBulkPress}
+            activateOnPressIn
+            activateOnTouchStart
+            unstable_pressDelay={0}
+            style={({ pressed }) => [
+              s.bulkButton,
+              {
+                borderColor: T.border,
+                backgroundColor: T.glass1,
+                opacity: bulkDisabled ? 0.45 : 1,
+              },
+              pressed && !bulkDisabled && { backgroundColor: T.glass3 },
+            ]}
+          >
+            <Text style={[s.bulkButtonText, { color: T.textMuted }]}>{t('Bulk')}</Text>
+          </FastPressable>
         </View>
-        <FastPressable latencyLabel="trade.bulk.open" accessibilityRole="button" accessibilityLabel={t('Position bulk options')}
-          disabled={bulkDisabled} accessibilityState={{ disabled: bulkDisabled }}
-          onPress={onBulkPress} activateOnPressIn activateOnTouchStart unstable_pressDelay={0}
-          style={({ pressed }) => [s.bulkButton, { borderColor: T.border, backgroundColor: T.glass1, opacity: bulkDisabled ? 0.45 : 1 }, pressed && !bulkDisabled && { backgroundColor: T.glass3 }]}>
-          <Text style={[s.bulkButtonText, { color: T.textMuted }]}>{t('Bulk')}</Text>
-        </FastPressable>
-      </View>
+      ) : (
+        <View style={[s.positionsHeader, { borderBottomColor: T.border }]}>
+          <View style={s.positionsHeaderLeft}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={s.positionsTitleRow}>
+                <Text style={[s.positionsTitle, { color: T.text }]}>{t('Positions')}</Text>
+              </View>
+              <Text style={[s.positionsMeta, { color: T.textMuted }]}>
+                {positions.length} {t('open')} • {(totalVolume || 0).toFixed(2)} {t('lots')}
+              </Text>
+            </View>
+          </View>
+          <FastPressable latencyLabel="trade.bulk.open" accessibilityRole="button" accessibilityLabel={t('Position bulk options')}
+            disabled={bulkDisabled} accessibilityState={{ disabled: bulkDisabled }}
+            onPress={onBulkPress} activateOnPressIn activateOnTouchStart unstable_pressDelay={0}
+            style={({ pressed }) => [s.bulkButton, { borderColor: T.border, backgroundColor: T.glass1, opacity: bulkDisabled ? 0.45 : 1 }, pressed && !bulkDisabled && { backgroundColor: T.glass3 }]}>
+            <Text style={[s.bulkButtonText, { color: T.textMuted }]}>{t('Bulk')}</Text>
+          </FastPressable>
+        </View>
+      )}
     </>
   );
 });
@@ -274,6 +426,34 @@ export const useTradeLiveAccountSummary = ({
   const liveQuotes = useLiveSymbolQuotes(liveQuoteSymbols, active, quoteCommitIntervalMs);
   const account = useMemo(() => {
     const summary = buildTradeAccountSummary(liveAcc, tradingAccount);
+    if (
+      positions.length === 0 &&
+      resolvedLogin !== undefined &&
+      hydratedLogin === String(resolvedLogin)
+    ) {
+      const settledEquity = (Number.isFinite(summary.balance) ? summary.balance : 0) +
+        (Number.isFinite(summary.credit) ? summary.credit : 0);
+      const hadOpenTradeCarryover =
+        summary.margin > 0 ||
+        summary.floating !== 0 ||
+        summary.marginLevel > 0 ||
+        liveAcc.staleMetricFlags?.equity === true ||
+        liveAcc.staleMetricFlags?.margin_free === true ||
+        Boolean(tradingAccount?.staleMetrics?.includes('equity')) ||
+        Boolean(tradingAccount?.staleMetrics?.includes('freeMargin'));
+      return resolveRenderableTradeAccountSummary(
+        {
+          ...summary,
+          floating: 0,
+          margin: 0,
+          marginLevel: 0,
+          equity: hadOpenTradeCarryover ? settledEquity : summary.equity,
+          freeMargin: hadOpenTradeCarryover ? settledEquity : summary.freeMargin,
+        },
+        0,
+        0,
+      );
+    }
     const floating = resolveTradeFloatingPnl(summary.floating, positions, hydratedLogin, resolvedLogin, liveQuotes);
     const margin = resolveTradeUsedMargin(
       summary.margin,

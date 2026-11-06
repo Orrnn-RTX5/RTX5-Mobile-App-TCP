@@ -40,6 +40,7 @@ export function useMarketStatus(
       () => fetchMarketStatus(symbol),
     ),
     enabled: isEnabled,
+    staleTime: 25_000,
     refetchInterval: isPollingEnabled ? 30_000 : false,
     refetchOnWindowFocus: isPollingEnabled,
     refetchOnReconnect: isPollingEnabled,

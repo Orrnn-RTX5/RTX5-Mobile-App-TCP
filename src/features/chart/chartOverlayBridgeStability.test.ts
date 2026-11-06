@@ -725,8 +725,13 @@ test('overlay bridge: trade labels follow their price coordinate off screen', ()
   const anchoredLineBody = extractFunctionBody(source, 'renderAnchoredTradeLine');
   assertSourceContains(
     anchoredLineBody,
-    /line\.style\.transform = isOpenPositionOverlayLine\(item\) \? 'scaleY\(0\.5\)' : 'none'/,
-    'only the open-position stroke becomes a hairline without scaling its labels',
+    /line\.style\.transform = borderStyle === 'dashed' \? 'scaleY\(0\.55\)' : 'scaleY\(0\.65\)'[\s\S]*var effectiveLineWidth = 1/,
+    'open-position, pending-order, and SL/TP lines render as thin strokes without scaling their labels',
+  );
+  assertSourceContains(
+    source,
+    /\.rtx5-anchored-trade-line\[data-rtx5-line-style="dashed"\]\s*\{[\s\S]*border-top-width:\s*0px\s*!important;[\s\S]*box-sizing:\s*content-box\s*!important;[\s\S]*height:\s*1px\s*!important;[\s\S]*background-origin:\s*border-box\s*!important;/,
+    'Android Chromium WebView must keep a non-zero 1px paint box for repeating-linear-gradient dashed trade lines',
   );
   const anchoredLaneBody = extractFunctionBody(source, 'resolveAnchoredOverlayLabelLane');
   const applyAnchoredLaneBody = extractFunctionBody(source, 'applyAnchoredOverlayLabelLane');
@@ -909,8 +914,8 @@ test('overlay bridge: right-axis trade price boxes keep close entries visible', 
   );
   assertSourceContains(
     refreshBody,
-    /boxEl\.style\.left = \(positionBoxMetrics \? positionBoxMetrics\.axisLeft[\s\S]*boxEl\.style\.width = \(positionBoxMetrics \? positionBoxMetrics\.axisWidth[\s\S]*boxEl\.style\.background = box\.pendingEntry \? \(lastChartBackgroundColor \|\| '#FFFFFF'\) : '#FFFFFF'[\s\S]*boxEl\.style\.color = box\.color[\s\S]*boxEl\.style\.border = '1px solid ' \+ box\.color[\s\S]*boxEl\.style\.padding = '0 2px'[\s\S]*boxEl\.style\.textAlign = 'right'[\s\S]*boxEl\.style\.zIndex = box\.pendingDraft \? '20' : '16'/,
-    'right-axis trade boxes must stay pinned to the measured scale, with pending entries using the chart background',
+    /boxEl\.style\.left = \(positionBoxMetrics \? positionBoxMetrics\.axisLeft[\s\S]*boxEl\.style\.width = \(positionBoxMetrics \? positionBoxMetrics\.axisWidth[\s\S]*boxEl\.style\.background = lastChartBackgroundColor \|\| '#FFFFFF'[\s\S]*boxEl\.style\.color = box\.color[\s\S]*boxEl\.style\.border = '1px solid ' \+ box\.color[\s\S]*boxEl\.style\.padding = '0 4px'[\s\S]*boxEl\.style\.textAlign = 'right'[\s\S]*boxEl\.style\.zIndex = box\.pendingDraft \? '20' : '16'/,
+    'right-axis trade boxes must stay pinned to the measured scale, using the chart background',
   );
   assertSourceContains(
     refreshBody,

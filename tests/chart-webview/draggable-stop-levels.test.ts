@@ -34,7 +34,7 @@ test('SL/TP label and axis handles identify the exact ticket even when another l
   assert.equal(resolve({ target: { closest: () => null } }).hit.dragKey, first.dragKey);
 });
 
-test('explicit handles drag immediately while a bare executed SL/TP line retains its deliberate hold', () => {
+test('explicit handles and bare executed SL/TP lines both drag immediately via direct manipulation', () => {
   let starts = 0;
   let hold: (() => void) | undefined;
   const context: any = {
@@ -48,8 +48,8 @@ test('explicit handles drag immediately while a bare executed SL/TP line retains
   }
   assert.equal(starts, 4);
   assert.equal(hold, undefined);
-  assert.equal(begin({}, { hit: { dragKey: 'position-stop:sl:81' }, handle: false }), false);
-  assert.equal(starts, 4); hold!(); assert.equal(starts, 5);
+  assert.equal(begin({}, { hit: { dragKey: 'position-stop:sl:81' }, handle: false }), true);
+  assert.equal(starts, 5);
 });
 
 test('price-axis touches choose scaling except when the trader explicitly grabs a stop handle', () => {

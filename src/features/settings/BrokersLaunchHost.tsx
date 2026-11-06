@@ -22,9 +22,9 @@ import {
 } from './BrokersScreen/selectedBrokerHealthGate';
 import { warmDemoAccountForm } from './registerScreenPreload';
 import { selectGuestBrokerById } from '../../services/selectGuestBroker';
-import { switchTcpBroker } from '../../api/broker';
 import { openAuthFlow } from '../trade/authFlowState';
 import { scheduleAfterVisualFrame } from '../../utils/afterVisualFrame';
+import { ThemeModeRenderPriorityContext } from '../../state/themeMode';
 
 const BROKERS_LAUNCH_HIDDEN_STYLE = {
   elevation: 0,
@@ -139,24 +139,22 @@ export function BrokersLaunchHost() {
       );
     };
 
-    void switchTcpBroker({ brokerId: broker.brokerId, name: broker.name }).finally(() => {
-      void selectedBrokerHealthGate.run({
-        serverUrl: broker.serverUrl,
-        onAvailable: () => {
-          if (!isSelectedPickerStillActive()) return;
-          void selectGuestBrokerById(broker.brokerId, isSelectedPickerStillActive).then(selected => {
-            if (!selected || !isSelectedPickerStillActive()) return;
-            openAuthFlow(undefined, undefined, '/settings/brokers');
-            // The pending Accounts -> Brokers push owns this cover. Hiding it
-            // here would cancel a fast tap's push and leave Quotes underneath
-            // the form. The focused Brokers route removes its own cover.
-          }).catch(error => Alert.alert('Broker unavailable', error.message));
-        },
-        onUnavailable: () => {
-          if (!isSelectedPickerStillActive()) return;
-          Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
-        },
-      });
+    void selectedBrokerHealthGate.run({
+      serverUrl: broker.serverUrl,
+      onAvailable: () => {
+        if (!isSelectedPickerStillActive()) return;
+        void selectGuestBrokerById(broker.brokerId, isSelectedPickerStillActive).then(selected => {
+          if (!selected || !isSelectedPickerStillActive()) return;
+          openAuthFlow(undefined, undefined, '/settings/brokers');
+          // The pending Accounts -> Brokers push owns this cover. Hiding it
+          // here would cancel a fast tap's push and leave Quotes underneath
+          // the form. The focused Brokers route removes its own cover.
+        }).catch(error => Alert.alert('Broker unavailable', error.message));
+      },
+      onUnavailable: () => {
+        if (!isSelectedPickerStillActive()) return;
+        Alert.alert(SELECTED_BROKER_UNAVAILABLE_MESSAGE);
+      },
     });
   }, [router]);
 
@@ -223,12 +221,14 @@ export function BrokersLaunchHost() {
         testID="brokers-launch-animated-host"
       >
         {renderVisible ? (
-          <BrokersLaunchShell
-            onBack={closeLaunch}
-            onSelectBroker={selectBroker}
-            backLatencyLabel="brokers.launch.back"
-            dataActive={false}
-          />
+          <ThemeModeRenderPriorityContext.Provider value="immediate">
+            <BrokersLaunchShell
+              onBack={closeLaunch}
+              onSelectBroker={selectBroker}
+              backLatencyLabel="brokers.launch.back"
+              dataActive={false}
+            />
+          </ThemeModeRenderPriorityContext.Provider>
         ) : null}
       </View>
     </View>

@@ -5,13 +5,13 @@ import { wrapWithSentry } from '../src/services/sentry';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { memo, useEffect, useRef, useState } from 'react';
-import { AppState, StyleSheet, View } from 'react-native';
+import { AppState, View } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { enableFreeze } from 'react-native-screens';
 import { AppProviders } from '../src/state/providers/AppProviders';
 import { ErrorBoundary } from '../src/ui/components/ErrorBoundary';
-import { AppLogo } from '../src/ui/components/AppLogo';
+import { X5StartupSplash } from '../src/components/X5StartupSplash';
 import { FastPressable } from '../src/ui/components/FastPressable';
 import { SidebarDrawer } from '../src/ui/components/SidebarDrawer';
 import { useUserPreferences } from '../src/state/userPreferences';
@@ -42,16 +42,33 @@ import { BlownAccountJournalNavigator } from '../src/features/settings/JournalSc
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 
-SplashScreen.preventAutoHideAsync();
+// Immediately hide any static OS / Expo Go white splash overlay as soon as the
+// root module evaluates so our dark animated X5StartupSplash takes over immediately.
+void SplashScreen.hideAsync().catch(() => undefined);
 
 enableFreeze(true);
 
+/**
+ * Renders the animated X5 startup splash screen while initial preference
+ * hydration, secure broker session restore, and icon fonts are loading.
+ * Hides the static OS boot splash as soon as X5StartupSplash lays out on
+ * screen so the user sees a seamless transition to the pulsing X5 logo.
+ */
 function StartupLogoScreen() {
+  const themeMode = useThemeMode();
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+    return scheduleAfterVisualFrame(() => {
+      void SplashScreen.hideAsync();
+    });
+  }, []);
   return (
-    <View style={styles.startupScreen}>
-      <StatusBar style="light" />
-      <AppLogo style={styles.startupLogo} />
-    </View>
+    <X5StartupSplash
+      theme={themeMode}
+      onLayout={() => {
+        void SplashScreen.hideAsync().catch(() => undefined);
+      }}
+    />
   );
 }
 
@@ -232,10 +249,10 @@ const InnerLayout = memo(function InnerLayout() {
         <ChartSettingsHost />
         <ChartConfigDestinationHost />
         </RetainedRoutePrewarmProvider>
+        <ShakeToReportBugHost />
+        <GuestFlowHost />
       </ThemeModeRenderPriorityContext.Provider>
       <SidebarDrawer />
-      <ShakeToReportBugHost />
-      <GuestFlowHost />
     </>
   );
 });
@@ -270,6 +287,8 @@ import { redactDiagnosticValue } from '../src/utils/securityRedaction';
 
 installGlobalStartupErrorHandlers();
 
+let initialSessionRestoreDone = false;
+
 function RootLayout() {
   const otaUpdatePrompt = useOtaUpdateOnLaunch();
   useDataAnalyzer();
@@ -287,8 +306,14 @@ function RootLayout() {
   const hasHydrated = useUserPreferences((s) => s.hasHydrated);
   const isLoggedIn = useUserPreferences((s) => s.isLoggedIn);
   const accountLogin = useUserPreferences((s) => s.accountDetails?.id);
-  const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
-  const sessionRestoreStartedRef = useRef(false);
+  const [sessionRestoreComplete, setSessionRestoreComplete] = useState(() => initialSessionRestoreDone);
+  const sessionRestoreStartedRef = useRef(initialSessionRestoreDone);
+
+  // Immediately dismiss the static OS / Expo Go launch screen once React Native
+  // mounts so the animated X5StartupSplash screen is shown instead of a white screen.
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     // This anonymous directory is needed by both restore validation and the
@@ -324,6 +349,7 @@ function RootLayout() {
         );
       })
       .finally(() => {
+        initialSessionRestoreDone = true;
         if (!cancelled) {
           setSessionRestoreComplete(true);
         }
@@ -502,6 +528,10 @@ function RootLayout() {
       // committed screen after paint, without an additional fixed 100 ms wait.
       return scheduleAfterVisualFrame(() => {
         void SplashScreen.hideAsync();
+        const notifyReady = (globalThis as Record<string, unknown>).__rtx5NotifyAppReady;
+        if (typeof notifyReady === 'function') {
+          notifyReady();
+        }
       });
     }
   }, [hasHydrated, sessionRestoreComplete, fontsReady]);
@@ -512,6 +542,10 @@ function RootLayout() {
   useEffect(() => {
     const fallback = setTimeout(() => {
       void SplashScreen.hideAsync();
+      const notifyReady = (globalThis as Record<string, unknown>).__rtx5NotifyAppReady;
+      if (typeof notifyReady === 'function') {
+        notifyReady();
+      }
     }, 8000);
     return () => clearTimeout(fallback);
   }, []);
@@ -533,15 +567,3 @@ function RootLayout() {
 
 export default wrapWithSentry(RootLayout);
 
-const styles = StyleSheet.create({
-  startupScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#121212',
-  },
-  startupLogo: {
-    width: 160,
-    height: 160,
-  },
-});

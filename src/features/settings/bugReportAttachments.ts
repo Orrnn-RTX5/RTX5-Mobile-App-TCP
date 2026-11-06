@@ -20,7 +20,7 @@ export async function prepareBugReportAttachment(asset: PickedFile, options: Bug
   let header: Uint8Array;
   if (nativeFile) {
     const handle = nativeFile.open();
-    try { header = handle.readBytes(Math.min(size, 48)); } finally { handle.close(); }
+    try { header = await handle.readBytes(Math.min(size, 48)); } finally { handle.close(); }
   } else header = new Uint8Array(await blob!.slice(0, 48).arrayBuffer());
   let mimeType = inspectBugReportFile(header);
   const imageTools = mimeType?.startsWith('image/') ? await import('expo-image-manipulator') : undefined;

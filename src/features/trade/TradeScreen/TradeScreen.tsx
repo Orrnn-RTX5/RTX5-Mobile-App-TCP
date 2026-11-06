@@ -46,7 +46,13 @@ import { requestOrrnnDemoTradeAuth } from '../tradeAuthPrompt';
 import { getActiveSltpUnavailableMessage, isExistingPositionModifyBackendLocked, SLTP_COMING_SOON_TITLE } from '../tradeBackendCapabilities';
 import { TradeSummaryDetailsHeader, TradeSummaryHeader } from './SummaryHeader';
 import { makeTradeScreenStyles } from './styles';
-import { captureActiveBrokerSession, getActiveBrokerSessionIdentity, isActiveBrokerSessionCurrent } from '../../../state/activeBrokerSession';
+import {
+  captureActiveBrokerSession,
+  captureActiveBrokerSessionOwnerStamp,
+  getActiveBrokerSessionIdentity,
+  isActiveBrokerSessionCurrent,
+  isActiveBrokerSessionOwnerStampCurrent,
+} from '../../../state/activeBrokerSession';
 import { getFeedHealthRenderSnapshot, requestFeedHealthRetry, subscribeFeedHealth } from '../../../market/feedHealthRuntime';
 import { feedHealthStateMatchesIdentity } from '../../../market/feedHealthState';
 import { buildFeedHealthBannerModel } from '../../../market/feedHealthPresentation';
@@ -55,7 +61,11 @@ import { useInvestorReadOnlySession } from '../../../hooks/useInvestorReadOnlySe
 import { useResponsiveLayout } from '../../../ui/layout/useResponsiveLayout';
 import { shouldScrollTradingSummary } from '../summaryViewport';
 import { PendingOrdersSection } from '../PendingOrdersSection';
+import { PENDING_BULK_OPTIONS, selectPendingOrdersForBulk } from '../pendingBulkCancel';
+import { usePendingOrdersQuery } from '../../../query/pendingOrders';
 import { AccountPageGate } from '../../auth/AccountPageGate';
+
+const EMPTY_POSITIONS: PositionItem[] = [];
 
 // Render only the first screenful of trade rows first. This prevents 15-30 open
 // positions from all mounting and subscribing to live quotes before the user scrolls.
@@ -100,6 +110,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
   isLiveScreenFocused: boolean;
 }) {
   const [viewablePositionIds, setViewablePositionIds] = useState<Set<string>>(() => new Set());
+  const [activeSection, setActiveSection] = useState<'positions' | 'pending'>('positions');
   const T = useTheme();
   const { t } = useTranslation();
   const isDark = useIsDarkTheme();
@@ -237,7 +248,8 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
     };
   }, [tradeFetchActive, resolvedLogin, fetchPositions]);
 
-  const positionRowsActive = tradeLiveActive;
+  const positionRowsActive = tradeLiveActive && activeSection === 'positions';
+  const { data: pendingOrders = [] } = usePendingOrdersQuery(tradeFetchActive);
   const { data: accountSummary } = useAccountSummary(accountLoginString, {
     enabled: tradeFetchActive && !!accountLoginString,
   });
@@ -253,17 +265,20 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
   const rowActivationKey = useMemo(
     // FlatList rows are memoized, so this key tells them when their "live row"
     // status changed after scrolling.
-    () => `${positionRowsActive ? '1' : '0'}:${Array.from(viewablePositionIds).sort().join('|')}`,
-    [positionRowsActive, viewablePositionIds],
+    () => `${positionRowsActive ? '1' : '0'}:${isDark ? 'dark' : 'light'}:${activeSection}:${Array.from(viewablePositionIds).sort().join('|')}`,
+    [activeSection, isDark, positionRowsActive, viewablePositionIds],
   );
   const flatListExtraData = useMemo(
     () => ({
       accountLeverage,
+      activeSection,
+      isDark,
+      pendingOrdersCount: pendingOrders.length,
       rowActivationKey,
       positionsListSignature,
       positionCount: renderablePositions.length,
     }),
-    [accountLeverage, rowActivationKey, positionsListSignature, renderablePositions.length],
+    [accountLeverage, activeSection, isDark, pendingOrders.length, rowActivationKey, positionsListSignature, renderablePositions.length],
   );
 
   /**
@@ -329,10 +344,65 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
     };
   }, [bulkActionIconColor, navigateToBulkMode, showTradeActionSheet, t]);
 
+  const themeSheetRefs = useRef({
+    textMuted: T.textMuted,
+    positionCloseActionColor,
+    bulkActionSheetConfig,
+  });
+  themeSheetRefs.current.textMuted = T.textMuted;
+  themeSheetRefs.current.positionCloseActionColor = positionCloseActionColor;
+  themeSheetRefs.current.bulkActionSheetConfig = bulkActionSheetConfig;
+
   const showBulkSheet = useCallback(() => {
     if (investorReadOnly || renderablePositions.length === 0) return;
-    runImmediateAction('trade.bulkSheet.open', () => showTradeActionSheet(bulkActionSheetConfig));
-  }, [bulkActionSheetConfig, investorReadOnly, renderablePositions.length, showTradeActionSheet]);
+    runImmediateAction('trade.bulkSheet.open', () => showTradeActionSheet(themeSheetRefs.current.bulkActionSheetConfig));
+  }, [investorReadOnly, renderablePositions.length, showTradeActionSheet]);
+
+  const showPendingBulkSheet = useCallback(() => {
+    const owner = captureActiveBrokerSessionOwnerStamp();
+    if (!tradeFetchActive || investorReadOnly || !owner || pendingOrders.length === 0) return;
+    const config: Parameters<typeof showTradeActionSheet>[0] = {
+      presentation: 'mt5Plain',
+      showActionIcons: true,
+      detent: 'auto',
+      instantOpen: true,
+      entryMotion: 'mt5Slide',
+      runActionAfterClose: false,
+      actions: PENDING_BULK_OPTIONS.map((option) => ({
+        label: t(option.label),
+        icon: <Ionicons name={option.icon} size={20} color={bulkActionIconColor} />,
+        disabled: selectPendingOrdersForBulk(pendingOrders, option.mode, owner.accountLogin).length === 0,
+        onPress: () => {
+          if (
+            !tradeFetchActive ||
+            investorReadOnly ||
+            !isActiveBrokerSessionOwnerStampCurrent(owner) ||
+            selectPendingOrdersForBulk(pendingOrders, option.mode, owner.accountLogin).length === 0
+          ) {
+            return;
+          }
+          useUIState.getState().hideTradeActionSheet();
+          router.push({
+            pathname: '/trade/pending-bulk',
+            params: { mode: option.mode, accountScope: owner.cacheNamespace },
+          });
+        },
+      })),
+    };
+    runImmediateAction('trade.pendingBulk.open', () => showTradeActionSheet(config));
+  }, [bulkActionIconColor, investorReadOnly, pendingOrders, showTradeActionSheet, t, tradeFetchActive]);
+
+  const handleBulkPress = useCallback(() => {
+    if (activeSection === 'pending') {
+      showPendingBulkSheet();
+      return;
+    }
+    showBulkSheet();
+  }, [activeSection, showBulkSheet, showPendingBulkSheet]);
+
+  const isBulkDisabled =
+    investorReadOnly ||
+    (activeSection === 'pending' ? pendingOrders.length === 0 : renderablePositions.length === 0);
 
   const showCloseSellPositions = useCallback(() => {
     if (investorReadOnly) return;
@@ -349,6 +419,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
 
   const showPositionSheet = useCallback(
     (item: PositionItem) => {
+      const { textMuted, positionCloseActionColor: closeActionColor } = themeSheetRefs.current;
       runImmediateAction('trade.positionSheet.open', () => {
         showTradeActionSheet({
           presentation: 'mt5Plain',
@@ -361,9 +432,9 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
               ? []
               : ([
                   {
-                    icon: <Ionicons name="close-circle-outline" size={20} color={positionCloseActionColor} />,
+                    icon: <Ionicons name="close-circle-outline" size={20} color={closeActionColor} />,
                     label: t('Close position'),
-                    textColor: positionCloseActionColor,
+                    textColor: closeActionColor,
                     textFontWeight: TRADE_POSITION_CLOSE_ACTION_FONT_WEIGHT,
                     onPress: () => {
                       if (
@@ -380,7 +451,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
                     },
                   },
                   {
-                    icon: <Ionicons name="create-outline" size={20} color={T.textMuted} />,
+                    icon: <Ionicons name="create-outline" size={20} color={textMuted} />,
                     label: t('Modify position'),
                     activateOnPressIn: true,
                     onPress: () => {
@@ -402,7 +473,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
                     },
                   },
                   {
-                    icon: <Ionicons name="swap-horizontal-outline" size={20} color={T.textMuted} />,
+                    icon: <Ionicons name="swap-horizontal-outline" size={20} color={textMuted} />,
                     label: t('Trade'),
                     activateOnPressIn: true,
                     onPress: () => {
@@ -424,7 +495,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
                   },
                 ] satisfies Parameters<typeof showTradeActionSheet>[0]['actions'])),
             {
-              icon: <Ionicons name="analytics-outline" size={20} color={T.textMuted} />,
+              icon: <Ionicons name="analytics-outline" size={20} color={textMuted} />,
               label: t('Chart'),
               activateOnPressIn: true,
               onPress: () => {
@@ -441,7 +512,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
         prefetchOrderTicketData(String(resolvedLogin ?? ''), item.symbol);
       });
     },
-    [T.textMuted, investorReadOnly, positionCloseActionColor, primePositionSnapshot, resolvedLogin, setChartSymbol, showTradeActionSheet, t],
+    [investorReadOnly, primePositionSnapshot, resolvedLogin, setChartSymbol, showTradeActionSheet, t],
   );
 
   const renderPositionRow = useCallback(
@@ -482,7 +553,7 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
           keyboardShouldPersistTaps="always"
           canCancelContentTouches={Platform.OS === 'ios'}
           style={s.list}
-          data={renderablePositions}
+          data={activeSection === 'positions' ? renderablePositions : EMPTY_POSITIONS}
           keyExtractor={(item) => item.id}
           contentContainerStyle={s.listContent}
           showsVerticalScrollIndicator={false}
@@ -497,16 +568,32 @@ const TradeScreenInner = React.memo(function TradeScreenInner({
           extraData={flatListExtraData}
           renderItem={renderPositionRow}
           ListHeaderComponent={
-            <TradeSummaryDetailsHeader positions={renderablePositions} s={s} T={T} isDark={isDark} totalVolume={totalVolume} onBulkPress={showBulkSheet} scrollSummary={scrollSummary} />
+            <TradeSummaryDetailsHeader
+              positions={renderablePositions}
+              s={s}
+              T={T}
+              isDark={isDark}
+              totalVolume={totalVolume}
+              onBulkPress={handleBulkPress}
+              bulkDisabled={isBulkDisabled}
+              scrollSummary={scrollSummary}
+              activeSection={activeSection}
+              onSelectSection={setActiveSection}
+              pendingOrdersCount={pendingOrders.length}
+            />
           }
           ListEmptyComponent={
-            <View style={s.emptyState}>
-              <Ionicons name="receipt-outline" size={48} color={T.textDimmed} />
-              <Text style={[s.emptyTitle, { color: T.textMuted }]}>{t('No open positions')}</Text>
-              <Text style={[s.emptySub, { color: T.textDimmed }]}>{lastError ? `${t('Account')} ${lastFetchLogin ?? resolvedLogin ?? t('unknown')}: ${getTradingErrorOriginLabel(lastError.origin)}. ${lastError.title}: ${lastError.message}` : resolvedLogin ? `${t('Account')} ${resolvedLogin}: ${t('your active trades will appear here')}` : t('Waiting for active trading account')}</Text>
-            </View>
+            activeSection === 'positions' ? (
+              <View style={s.emptyState}>
+                <Ionicons name="receipt-outline" size={48} color={T.textDimmed} />
+                <Text style={[s.emptyTitle, { color: T.textMuted }]}>{t('No open positions')}</Text>
+                <Text style={[s.emptySub, { color: T.textDimmed }]}>{lastError ? `${t('Account')} ${lastFetchLogin ?? resolvedLogin ?? t('unknown')}: ${getTradingErrorOriginLabel(lastError.origin)}. ${lastError.title}: ${lastError.message}` : resolvedLogin ? `${t('Account')} ${resolvedLogin}: ${t('your active trades will appear here')}` : t('Waiting for active trading account')}</Text>
+              </View>
+            ) : (
+              <PendingOrdersSection active={tradeFetchActive} hideHeader />
+            )
           }
-          ListFooterComponent={<PendingOrdersSection active={tradeFetchActive} />}
+          ListFooterComponent={null}
         />
       </TradeSummaryHeader>
     </Screen>

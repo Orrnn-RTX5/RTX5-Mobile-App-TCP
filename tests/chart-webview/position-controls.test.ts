@@ -72,10 +72,10 @@ test('multiple position bars remain centered on their own entry prices without s
   const h=harness(330,500);
   const records=[h.item('81',150),h.item('82',160),h.item('83',300)];
   const tops=h.runtime.resolveAnchoredOverlayLabelTops(records);
-  records.forEach((record,index)=>assert.equal(tops[index]+24,record.y));
+  records.forEach((record,index)=>assert.equal(tops[index]+16,record.y));
   records.forEach(record=>{record.y+=50;});
   const next=h.runtime.resolveAnchoredOverlayLabelTops(records);
-  records.forEach((record,index)=>assert.equal(next[index]+24,record.y));
+  records.forEach((record,index)=>assert.equal(next[index]+16,record.y));
 });
 
 test('swiping the position buttons never detaches a bar from its entry level or submits a trade action',()=>{
@@ -171,7 +171,7 @@ test('coincident entries stay at their exact level and preserve each ticket iden
   const h=harness(330,300);const records=Array.from({length:10},(_,index)=>h.item(String(81+index),180));
   const tops=h.runtime.resolveAnchoredOverlayLabelTops(records);
   records.forEach((record,index)=>{
-    assert.equal(tops[index],156);
+    assert.equal(tops[index],164);
     const label=h.render(record,tops[index]);
     assert.equal(label._positionControl.positionId,String(81+index));
   });
@@ -218,7 +218,7 @@ test('narrow phone plots and large text keep a single compact TP/SL strip center
     const h=harness(width,500);const records=[h.item('81',260),h.item('82',260)];
     records.forEach(item=>{item.positionControl.fontScale=scale;});
     const tops=h.runtime.resolveAnchoredOverlayLabelTops(records);const height=48*scale;
-    assert.equal(tops[0]+height/2,260);assert.equal(tops[1]+height/2,260);
+    assert.equal(tops[0]+16,260);assert.equal(tops[1]+16,260);
     const node=h.render(records[0],tops[0]);assert.equal(node.style.display,'flex');assert.equal(node.style.height,height+'px');
     assert.equal(node.querySelectorAll('button').length,4);
     assert.deepEqual(node.querySelectorAll('button').map(button=>(button as any)._positionAction),['tp','sl','details','close']);
@@ -237,7 +237,7 @@ test('position TP/SL controls follow the price projection during pan, zoom and q
   for(const y of [100,420,-800,1200,260]){
     const next=h.item('81',y);next.paneVisible=y>=0&&y<=500;next.labelValueText='+1.23000 EUR';
     const top=h.runtime.resolveAnchoredOverlayLabelTops([next])[0];h.render(next,top);
-    assert.equal(top+24,y);assert.equal(node.style.top,(y-24)+'px');
+    assert.equal(top+16,y);assert.equal(node.style.top,(y-24)+'px');
     assert.equal(node.style.visibility,y>=24&&y<=476?'visible':'hidden');
     assert.equal(node._rtx5ValueSpan.textContent,'+1.23000 EUR');
   }
@@ -249,7 +249,7 @@ test('reordered position payloads keep every ticket on its current projected pri
   h.runtime.resolveAnchoredOverlayLabelTops(records);
   const next=[h.item('82',330),h.item('81',170)];
   const tops=h.runtime.resolveAnchoredOverlayLabelTops(next);
-  assert.equal(tops[0],306);assert.equal(tops[1],146);
+  assert.equal(tops[0],314);assert.equal(tops[1],154);
 });
 
 test('pane resizing never clamps a bar away from its actual entry coordinate',()=>{
@@ -257,16 +257,16 @@ test('pane resizing never clamps a bar away from its actual entry coordinate',()
   h.render(item,h.runtime.resolveAnchoredOverlayLabelTops([item])[0]);
   h.context.resolveTradeOverlayPaneBounds=()=>({top:0,bottom:200});item.paneVisible=false;
   const top=h.runtime.resolveAnchoredOverlayLabelTops([item])[0];
-  assert.equal(top,376);assert.equal(h.render(item,top).style.visibility,'hidden');
+  assert.equal(top,384);assert.equal(h.render(item,top).style.visibility,'hidden');
 });
 
 test('position controls hide offscreen and reappear at the correct price when scrolled back',()=>{
   const h=harness(330,500),item=h.item('81',-100);item.paneVisible=false;
   let top=h.runtime.resolveAnchoredOverlayLabelTops([item])[0];assert.equal(h.render(item,top).style.visibility,'hidden');
   item.y=200;item.paneVisible=true;top=h.runtime.resolveAnchoredOverlayLabelTops([item])[0];
-  assert.equal(h.render(item,top).style.visibility,'visible');assert.equal(top,176);
+  assert.equal(h.render(item,top).style.visibility,'visible');assert.equal(top,184);
   item.y=700;item.paneVisible=false;top=h.runtime.resolveAnchoredOverlayLabelTops([item])[0];
-  assert.equal(top,676);assert.equal(h.render(item,top).style.visibility,'hidden');
+  assert.equal(top,684);assert.equal(h.render(item,top).style.visibility,'hidden');
 });
 
 test('the gesture reposition pass keeps controls, entry lines and axis boxes aligned to the same price',()=>{
@@ -274,15 +274,15 @@ test('the gesture reposition pass keeps controls, entry lines and axis boxes ali
   const line=h.nodes['line:'+item.id]=new Node();const box=h.nodes['box:'+item.id]=new Node();
   h.context._overlayPayload={priceLines:[{...item,price:260}]};
   h.runtime.repositionTradeOverlayDomNodes();
-  assert.equal(label.style.top,'236px');assert.equal(line.style.top,'260px');assert.equal(box.style.top,'251px');
+  assert.equal(label.style.top,'244px');assert.equal(line.style.top,'260px');assert.equal(box.style.top,'251px');
   h.context.series.priceToCoordinate=(price:number)=>price-400;
   h.runtime.repositionTradeOverlayDomNodes();
-  assert.equal(label.style.top,'-164px');assert.equal(label.style.visibility,'hidden');
+  assert.equal(label.style.top,'-156px');assert.equal(label.style.visibility,'hidden');
   assert.equal(line.style.top,'-140px');assert.equal(box.style.top,'-149px');
   assert.equal(line.style.visibility,'hidden');assert.equal(box.style.visibility,'hidden');
   h.context.series.priceToCoordinate=(price:number)=>price*1.5;
   h.runtime.repositionTradeOverlayDomNodes();
-  assert.equal(label.style.top,'366px');assert.equal(line.style.top,'390px');assert.equal(box.style.top,'381px');
+  assert.equal(label.style.top,'374px');assert.equal(line.style.top,'390px');assert.equal(box.style.top,'381px');
   assert.equal(line.style.visibility,'visible');assert.equal(box.style.visibility,'visible');
   assert.equal(h.messages.length,0,'chart gestures cannot submit a position action');
 });
@@ -303,6 +303,6 @@ test('entry lines and price boxes remain at actual coordinates; price pan uses R
   const reposition=extractFunctionBody(source,'repositionTradeOverlayDomNodes');
   assert.match(reposition,/var rowY = record\.y/);
   assert.match(source,/Math\.hypot\(holdPoint\.x[\s\S]*> 8\) cancelPositionStopHold/);
-  assert.match(source,/}, 320\);/);
+  assert.match(source,/beginTradeLineDrag\(event, resolvedHit\.hit\)/);
   assert.match(source,/postChartTradeLineDrag\(cancelled \? 'cancel' : 'end'/);
 });

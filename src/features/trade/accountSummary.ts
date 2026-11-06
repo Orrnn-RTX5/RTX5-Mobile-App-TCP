@@ -1,7 +1,20 @@
 import type { LiveAccountData, LiveAccountMetricFlags } from '../../state/liveAccountState';
 import type { AccountSummary } from '../../state/tradingState';
 import type { PositionItem, QuoteItem } from '../../domain/tradingModels';
-import { sumLivePositionMargin, sumLivePositionPnl } from './livePositionMetrics.ts';
+import { readBackendNumber } from '../../utils/accountCurrency';
+import {
+  resolveTradeAccountMetrics,
+  type TradeAccountMetrics,
+} from '../../utils/accountMetrics';
+import {
+  readBackendPositionMargin,
+  resolveTradeProfit,
+  sumLivePositionMargin,
+  sumLivePositionPnl,
+} from './livePositionMetrics.ts';
+
+export type { TradeAccountMetrics };
+export { resolveTradeAccountMetrics };
 
 type TradeLiveAccountMetrics = Partial<LiveAccountData> & {
   metricFlags?: Partial<LiveAccountMetricFlags>;
@@ -91,39 +104,49 @@ export function buildTradeAccountSummary(
   };
 }
 
+/**
+ * Returns the backend-provided floating P/L without recalculating from frontend ticks.
+ * Falls back to the sum of backend-reported `position.pnl` values only when the
+ * account-level floating metric has not arrived yet (0) while synced positions exist.
+ */
 export function resolveTradeFloatingPnl(
   summaryFloating: number,
   positions: PositionItem[],
   hydratedLogin: string | null,
   activeLogin: number | string | null | undefined,
-  quotesBySymbol: Record<string, Partial<QuoteItem> | undefined> = {},
+  _quotesBySymbol: Record<string, Partial<QuoteItem> | undefined> = {},
 ): number {
-  if (activeLogin === null || activeLogin === undefined) {
-    return summaryFloating;
+  void _quotesBySymbol;
+  const backendFloating = toFiniteNumber(summaryFloating) ?? 0;
+  if (backendFloating !== 0 || positions.length === 0) {
+    return backendFloating;
   }
 
-  if (hydratedLogin !== String(activeLogin)) {
-    return summaryFloating;
+  if (activeLogin === null || activeLogin === undefined || hydratedLogin !== String(activeLogin)) {
+    return backendFloating;
   }
 
-  return sumLivePositionPnl(positions, quotesBySymbol);
+  return sumLivePositionPnl(positions);
 }
 
+/**
+ * Returns only the backend-reported used margin (`summaryMargin` or stored
+ * `fallbackAccountMargin`), never estimating margin on the frontend.
+ */
 export function resolveTradeUsedMargin(
   summaryMargin: number,
   fallbackAccountMargin: number | undefined,
-  positions: PositionItem[],
+  _positions: PositionItem[],
   hydratedLogin: string | null,
   activeLogin: number | string | null | undefined,
-  quotesBySymbol: Record<string, Partial<QuoteItem> | undefined> = {},
-  leverage?: number,
+  _quotesBySymbol: Record<string, Partial<QuoteItem> | undefined> = {},
+  _leverage?: number,
 ): number {
+  void _positions;
+  void _quotesBySymbol;
+  void _leverage;
   if (Number.isFinite(summaryMargin) && summaryMargin > 0) {
     return summaryMargin;
-  }
-
-  if (positions.length === 0) {
-    return 0;
   }
 
   if (
@@ -143,60 +166,143 @@ export function resolveTradeUsedMargin(
     return fallbackAccountMargin;
   }
 
-  return sumLivePositionMargin(positions, quotesBySymbol, leverage);
+  return Number.isFinite(summaryMargin) ? summaryMargin : 0;
 }
 
+/**
+ * Preserves backend-supplied account summary metrics (`balance`, `credit`,
+ * `floating`, `equity`, `margin`, `freeMargin`, `marginLevel`) directly
+ * without recalculating `equity` or `freeMargin` on the frontend.
+ */
 export function resolveRenderableTradeAccountSummary(
   summary: TradeAccountSummary,
-  floating: number,
+  floating = summary.floating,
   resolvedMargin = summary.margin,
 ): TradeAccountSummary {
-  if (!Number.isFinite(floating)) {
-    return summary;
-  }
-
-  const margin =
+  const nextFloating = Number.isFinite(floating)
+    ? floating
+    : (toFiniteNumber(summary.floating) ?? 0);
+  const nextMargin =
     Number.isFinite(resolvedMargin) && resolvedMargin > 0
       ? resolvedMargin
-      : summary.margin;
-
-  // Balance is settled cash. Equity/free margin move live because
-  // they include current floating P/L while positions are still open.
-  const floatingChanged = Math.abs(floating - summary.floating) > Number.EPSILON;
-  const marginChanged =
-    Number.isFinite(margin) &&
-    (!Number.isFinite(summary.margin) || Math.abs(margin - summary.margin) >= 0.005);
-  const equity = summary.balance + summary.credit + floating;
-  const freeMargin = equity - margin;
-  // Margin Level comes from the backend; quote/position estimates must not
-  // manufacture a percentage when the backend has not supplied one.
-  const marginLevel = toFiniteNumber(summary.marginLevel) ?? 0;
-  const equityChanged =
-    Number.isFinite(equity) &&
-    (!Number.isFinite(summary.equity) || Math.abs(equity - summary.equity) >= 0.005);
-  const freeMarginChanged =
-    Number.isFinite(freeMargin) &&
-    (!Number.isFinite(summary.freeMargin) || Math.abs(freeMargin - summary.freeMargin) >= 0.005);
-  const marginLevelChanged =
-    Number.isFinite(marginLevel) &&
-    (!Number.isFinite(summary.marginLevel) || Math.abs(marginLevel - summary.marginLevel) >= 0.005);
+      : (toFiniteNumber(summary.margin) ?? 0);
+  const nextEquity = toFiniteNumber(summary.equity) ?? 0;
+  const nextFreeMargin = toFiniteNumber(summary.freeMargin) ?? 0;
+  const nextMarginLevel = toFiniteNumber(summary.marginLevel) ?? 0;
 
   if (
-    !floatingChanged &&
-    !marginChanged &&
-    !equityChanged &&
-    !freeMarginChanged &&
-    !marginLevelChanged
+    Object.is(nextFloating, summary.floating) &&
+    Object.is(nextMargin, summary.margin) &&
+    Object.is(nextEquity, summary.equity) &&
+    Object.is(nextFreeMargin, summary.freeMargin) &&
+    Object.is(nextMarginLevel, summary.marginLevel)
   ) {
     return summary;
   }
 
   return {
     ...summary,
-    floating,
-    margin: Number.isFinite(margin) ? margin : summary.margin,
-    equity: Number.isFinite(equity) ? equity : summary.equity,
-    freeMargin: Number.isFinite(freeMargin) ? freeMargin : summary.freeMargin,
-    marginLevel: Number.isFinite(marginLevel) ? marginLevel : summary.marginLevel,
+    floating: nextFloating,
+    margin: nextMargin,
+    equity: nextEquity,
+    freeMargin: nextFreeMargin,
+    marginLevel: nextMarginLevel,
   };
 }
+
+export const applyLivePositionProfit = (
+  metrics: TradeAccountMetrics,
+  positions: readonly any[] | null | undefined,
+  contractSizesBySymbol?: ReadonlyMap<string, number>,
+): TradeAccountMetrics => {
+  if (!Array.isArray(positions)) return metrics;
+  if (positions.length === 0) {
+    return {
+      ...metrics,
+      floatingPnL: metrics.floatingPnL === null ? null : 0,
+      unrealizedPL: metrics.unrealizedPL === null ? null : 0,
+    };
+  }
+  let positionsMargin: number | null = 0;
+  for (const position of positions) {
+    const positionMargin = readBackendPositionMargin(position);
+    if (positionMargin === null) {
+      positionsMargin = null;
+      break;
+    }
+    positionsMargin += positionMargin;
+  }
+  const margin =
+    metrics.margin !== null && metrics.margin > 0
+      ? metrics.margin
+      : positionsMargin !== null && positionsMargin > 0
+        ? positionsMargin
+        : (metrics.margin ?? positionsMargin);
+  let floatingPnL = 0;
+  let allProfitsAvailable = true;
+  for (const position of positions) {
+    const resolved = resolveTradeProfit(position, contractSizesBySymbol);
+    if (resolved.value === null) {
+      allProfitsAvailable = false;
+      break;
+    }
+    const swap = readBackendNumber(position?.swap ?? position?.storage) ?? 0;
+    const commission = readBackendNumber(position?.commission) ?? 0;
+    floatingPnL += resolved.value + swap + commission;
+  }
+  if (!allProfitsAvailable) {
+    return margin === metrics.margin ? metrics : { ...metrics, margin };
+  }
+  const liveEquity =
+    metrics.balance !== null
+      ? metrics.balance + (metrics.credit ?? 0) + floatingPnL
+      : metrics.equity;
+  const hasBackendPositionTotals = positionsMargin !== null;
+  const equity =
+    (metrics.equity === null && !hasBackendPositionTotals) || liveEquity === null
+      ? null
+      : liveEquity;
+  const freeMargin =
+    (metrics.freeMargin === null && !hasBackendPositionTotals) ||
+    equity === null ||
+    margin === null
+      ? metrics.freeMargin
+      : equity - margin;
+  const marginLevel =
+    (metrics.marginLevel === null && !hasBackendPositionTotals) ||
+    equity === null ||
+    margin === null
+      ? metrics.marginLevel
+      : margin <= 0
+        ? metrics.marginLevel !== null && metrics.marginLevel > 0
+          ? metrics.marginLevel
+          : null
+        : (equity / margin) * 100;
+  const resolvedFloating =
+    metrics.floatingPnL === null && !hasBackendPositionTotals ? null : floatingPnL;
+  const resolvedUnrealized =
+    metrics.unrealizedPL === null && !hasBackendPositionTotals ? null : floatingPnL;
+
+  return {
+    ...metrics,
+    equity,
+    margin,
+    freeMargin,
+    marginLevel,
+    floatingPnL: resolvedFloating,
+    unrealizedPL: resolvedUnrealized,
+  };
+};
+
+export const isAccountBlown = (
+  metricsOrAccount:
+    | Pick<TradeAccountMetrics, 'balance' | 'equity'>
+    | { balance?: number | null; equity?: number | null }
+    | null
+    | undefined,
+): boolean => {
+  if (!metricsOrAccount) return false;
+  const equity = readBackendNumber(metricsOrAccount.equity) ?? null;
+  const balance = readBackendNumber(metricsOrAccount.balance) ?? null;
+  return equity !== null && equity <= 0 && (balance ?? 0) <= 0;
+};

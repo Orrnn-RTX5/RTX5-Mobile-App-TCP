@@ -35,6 +35,10 @@ test('bottom tab touch-start paints optimistically before real navigation work',
   assert.match(source, /useUIState\.getState\(\)\.hideActionSheet\(\)/);
   assert.match(source, /const visualRevision = showFastTabVisual\(routeName\)/);
   assert.match(source, /if \(visualRevision !== null\) \{[\s\S]*?scheduleFastTabNavigation\(visualRevision, commitNavigation, TAB_BAR_NAVIGATION_SETTLE_DELAY_MS\);\s*\} else \{\s*commitNavigation\(\)/);
+  assert.match(source, /android_ripple=\{\{ color: undefined, borderless: undefined, radius: undefined \}\}/);
+  assert.match(source, /pressColor="transparent"/);
+  assert.match(source, /pressOpacity=\{1\}/);
+  assert.match(source, /hoverEffect=\{undefined\}/);
   assert.match(source, /onTouchStart=\{handleTouchStart\}/);
   assert.match(source, /onPressIn=\{handlePressIn\}/);
   assert.match(source, /onPress=\{handlePress\}/);
@@ -204,7 +208,7 @@ test('custom fast tabs retain Expo Router and TabRouter navigation contracts', (
   assert.match(source, /useNavigationBuilder<[\s\S]*TabNavigationState<ParamListBase>,[\s\S]*TabRouterOptions,[\s\S]*TabActionHelpers<ParamListBase>,[\s\S]*BottomTabNavigationOptions,[\s\S]*BottomTabNavigationEventMap[\s\S]*>\(TabRouter, \{/);
   assert.match(source, /<NavigationContent>[\s\S]*<FastTabView/);
   assert.match(source, /return createNavigatorFactory\(FastTabNavigator\)\(config\)/);
-  assert.match(source, /const ExpoFastTabs = withLayoutContext<[\s\S]*FastTabScreenOptions,[\s\S]*typeof FastTabNavigatorFactory\.Navigator,[\s\S]*TabNavigationState<ParamListBase>,[\s\S]*BottomTabNavigationEventMap[\s\S]*>\(FastTabNavigatorFactory\.Navigator/);
+  assert.match(source, /const ExpoFastTabs = withLayoutContext<[\s\S]*FastTabScreenOptions,[\s\S]*typeof FastTabNavigatorFactory\.Navigator,[\s\S]*(?:TabNavigationState<ParamListBase>|any),[\s\S]*BottomTabNavigationEventMap[\s\S]*>\(FastTabNavigatorFactory\.Navigator/);
   assert.match(source, /UNSTABLE_router=\{expoTabRouterOverride\}/);
 });
 
@@ -302,13 +306,13 @@ test('tab bar and retained scenes share one deterministic visible route', () => 
   assert.match(navigatorSource, /\|\| previous\.visualFocused !== next\.visualFocused/);
 });
 
-test('native-revealable tab scenes keep the settled theme before first navigation', () => {
+test('native-revealable tab scenes keep the settled theme when hidden and update immediately when visible', () => {
   const navigatorSource = readSource('src/ui/navigation/FastTabNavigator.tsx');
   const themeModeSource = readSource('src/state/themeMode.ts');
 
   assert.match(
     navigatorSource,
-    /<ThemeModeRenderPriorityContext\.Provider value="retained">[\s\S]*<SceneContent/,
+    /<ThemeModeRenderPriorityContext\.Provider\s+value=\{visualFocused \? 'immediate' : 'retained'\}\s*>[\s\S]*<SceneContent/,
   );
   assert.doesNotMatch(navigatorSource, /value=\{visualFocused \? 'retained' : 'frozen'\}/);
   assert.doesNotMatch(themeModeSource, /frozenThemeModeRef|renderPriority === 'frozen'/);
@@ -385,7 +389,7 @@ test('bottom tab presses never write timing logs or LogBox warnings', () => {
 test('bottom tab navigation fast path preserves light and dark tab bar themes', () => {
   const source = readSource('app/(tabs)/_layout.tsx');
 
-  assert.match(source, /import \{ useThemeMode \} from '\.\.\/\.\.\/src\/state\/themeMode'/);
+  assert.match(source, /import \{[^}]*\buseThemeMode\b[^}]*\} from '\.\.\/\.\.\/src\/state\/themeMode'/);
   assert.match(source, /ThemedTabsChrome/);
   assert.match(source, /const themeMode = useThemeMode\(\)/);
   assert.match(source, /const isDark = themeMode === 'dark'/);

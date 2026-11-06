@@ -176,9 +176,29 @@ test('margin level uses a fresh backend source or zero when both sources omitted
   assert.equal(buildTradeAccountSummary({}, null).marginLevel, 0);
 });
 
-test('resolveTradeFloatingPnl uses the synced open-position total for the active login', () => {
-  const floating = resolveTradeFloatingPnl(
+test('resolveTradeFloatingPnl uses the backend floating value or synced open-position backend pnl sum when account floating is zero', () => {
+  const fromSummary = resolveTradeFloatingPnl(
     175.75,
+    [
+      {
+        id: '1001',
+        symbol: 'EURUSD',
+        side: 'buy',
+        volume: 0.1,
+        openPrice: 1.1,
+        currentPrice: 1.101,
+        pnl: 12.5,
+        swap: 0,
+        openTime: '2026-04-21T10:00:00.000Z',
+      },
+    ],
+    '100003',
+    100003,
+  );
+  assert.equal(fromSummary, 175.75);
+
+  const fromPositionsBackendPnl = resolveTradeFloatingPnl(
+    0,
     [
       {
         id: '1001',
@@ -205,13 +225,8 @@ test('resolveTradeFloatingPnl uses the synced open-position total for the active
     ],
     '100003',
     100003,
-    {
-      EURUSD: { bid: 1.101, ask: 1.10115 },
-      GBPUSD: { bid: 1.28815, ask: 1.288 },
-    },
   );
-
-  assert.equal(floating, 8.25);
+  assert.equal(fromPositionsBackendPnl, 8.25);
 });
 
 test('resolveTradeFloatingPnl keeps the live account floating value until positions sync for the active login', () => {
@@ -237,7 +252,7 @@ test('resolveTradeFloatingPnl keeps the live account floating value until positi
   assert.equal(floating, 175.75);
 });
 
-test('resolveRenderableTradeAccountSummary updates equity and free margin while preserving backend margin level', () => {
+test('resolveRenderableTradeAccountSummary preserves backend equity, free margin, and margin level without frontend recalculation', () => {
   const summary = resolveRenderableTradeAccountSummary(
     {
       balance: 9800,
@@ -253,20 +268,20 @@ test('resolveRenderableTradeAccountSummary updates equity and free margin while 
   );
 
   assert.equal(summary.floating, 18.75);
-  assert.equal(summary.equity, 9843.75);
-  assert.equal(summary.freeMargin, 9723.75);
+  assert.equal(summary.equity, 9787.5);
+  assert.equal(summary.freeMargin, 9667.5);
   assert.equal(summary.marginLevel, 8156.25);
 });
 
-test('resolveRenderableTradeAccountSummary keeps balance settled while deriving live equity from floating pnl', () => {
+test('resolveRenderableTradeAccountSummary keeps backend equity and free margin unmodified when floating pnl is passed', () => {
   const summary = resolveRenderableTradeAccountSummary(
     {
       balance: 10000,
       credit: 0,
       floating: -0.03,
-      equity: 10000,
+      equity: 9999.97,
       margin: 0,
-      freeMargin: 10000,
+      freeMargin: 9999.97,
       marginLevel: 0,
       currency: 'USD',
     },
@@ -279,7 +294,7 @@ test('resolveRenderableTradeAccountSummary keeps balance settled while deriving 
   assert.equal(Number(summary.freeMargin.toFixed(2)), 9999.97);
 });
 
-test('resolveRenderableTradeAccountSummary does not manufacture margin level from live equity', () => {
+test('resolveRenderableTradeAccountSummary does not manufacture equity, free margin, or margin level on the frontend', () => {
   const summary = resolveRenderableTradeAccountSummary(
     {
       balance: 10000,
@@ -287,15 +302,15 @@ test('resolveRenderableTradeAccountSummary does not manufacture margin level fro
       floating: -0.03,
       equity: 10000,
       margin: 25,
-      freeMargin: 0,
+      freeMargin: 9975,
       marginLevel: 0,
       currency: 'USD',
     },
     -0.03,
   );
 
-  assert.equal(Number(summary.equity.toFixed(2)), 9999.97);
-  assert.equal(Number(summary.freeMargin.toFixed(2)), 9974.97);
+  assert.equal(Number(summary.equity.toFixed(2)), 10000);
+  assert.equal(Number(summary.freeMargin.toFixed(2)), 9975);
   assert.equal(summary.marginLevel, 0);
 });
 
@@ -317,7 +332,7 @@ test('resolveRenderableTradeAccountSummary preserves a received margin level whi
   assert.equal(summary.marginLevel, 8000);
 });
 
-test('estimated position margin does not replace a missing backend margin level', () => {
+test('resolveTradeUsedMargin never estimates margin on the frontend when backend margin is zero', () => {
   const usedMargin = resolveTradeUsedMargin(
     0,
     0,
@@ -340,7 +355,7 @@ test('estimated position margin does not replace a missing backend margin level'
     100,
   );
 
-  assert.equal(Number(usedMargin.toFixed(2)), 8.16);
+  assert.equal(usedMargin, 0);
   const summary = resolveRenderableTradeAccountSummary(
     {
       balance: 10000,
@@ -355,7 +370,7 @@ test('estimated position margin does not replace a missing backend margin level'
     0.2,
     usedMargin,
   );
-  assert.equal(Number(summary.margin.toFixed(2)), 8.16);
-  assert.equal(Number(summary.freeMargin.toFixed(2)), 9992.04);
+  assert.equal(summary.margin, 0);
+  assert.equal(summary.freeMargin, 10000.2);
   assert.equal(summary.marginLevel, 0);
 });

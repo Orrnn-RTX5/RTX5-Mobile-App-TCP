@@ -309,10 +309,12 @@ export const LIVE_CHART_PREVIEW_COUNTDOWN_SCRIPT = String.raw`
         priceRow.style.height = PREVIEW_PRICE_BADGE_PRICE_ROW_HEIGHT + 'px';
         priceRow.style.lineHeight = PREVIEW_PRICE_BADGE_PRICE_ROW_HEIGHT + 'px';
         priceRow.style.fontSize = '12px';
+        priceRow.style.textAlign = 'center';
         countdownRow.style.display = 'block';
         countdownRow.style.height = PREVIEW_PRICE_BADGE_COUNTDOWN_ROW_HEIGHT + 'px';
         countdownRow.style.lineHeight = PREVIEW_PRICE_BADGE_COUNTDOWN_ROW_HEIGHT + 'px';
         countdownRow.style.fontSize = countdownLabel.length > 11 ? '8px' : '10px';
+        countdownRow.style.textAlign = 'center';
       }
 
       function stopPreviewCandleCountdownTicker() {

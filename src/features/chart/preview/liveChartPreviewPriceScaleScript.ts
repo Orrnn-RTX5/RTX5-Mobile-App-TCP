@@ -411,11 +411,24 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
             capturedPointerId = event.pointerId;
           } catch (_error) {}
         }
+        var minimumSpan = resolvePreviewPriceScaleMinimumSpan(startSpan, metrics.height, minMove);
+        var octavesToMin =
+          startSpan > minimumSpan && minimumSpan > 0
+            ? Math.log(startSpan / minimumSpan) / Math.LN2
+            : PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT;
         previewPriceScaleAxisGesture = {
           anchorRatio: anchorRatio,
-          minimumSpan: resolvePreviewPriceScaleMinimumSpan(startSpan, metrics.height, minMove),
+          maxDragOctaves: Math.max(
+            PREVIEW_PRICE_SCALE_MAX_DRAG_OCTAVES,
+            Math.ceil(octavesToMin) + 4
+          ),
+          minimumSpan: minimumSpan,
           minMove: minMove,
           moved: false,
+          octavesPerPlot: Math.max(
+            PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT,
+            Math.ceil((octavesToMin / 0.55) * 100) / 100
+          ),
           plotHeight: metrics.height,
           pointerId: capturedPointerId,
           referenceSpan: referenceSpan,
@@ -439,15 +452,27 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
         if (!state.moved && Math.abs(deltaY) < PREVIEW_PRICE_SCALE_AXIS_DRAG_THRESHOLD_PX) {
           return false;
         }
+        // FIX (Preview Price Scale Smooth Drag Ramp):
+        // Use a gentle initial sensitivity for small finger drags and smoothly ramp up
+        // to targetOctavesPerPlot on longer drags so the preview chart scales smoothly
+        // without sudden vertical shrinking while still reaching the finest price step.
+        var targetOctavesPerPlot = state.octavesPerPlot || PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT;
+        var rampRatio = Math.min(
+          1,
+          Math.max(0, (Math.abs(deltaY) - 20) / Math.max(1, (state.plotHeight || 300) * 0.35))
+        );
+        var effectiveOctavesPerPlot =
+          PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT +
+          (targetOctavesPerPlot - PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT) * rampRatio;
         var nextRange = resolveMt5PriceScaleDragRange({
           anchorRatio: state.anchorRatio,
           boundOctaves: PREVIEW_PRICE_SCALE_BOUND_OCTAVES,
           deltaY: deltaY,
-          maxDragOctaves: PREVIEW_PRICE_SCALE_MAX_DRAG_OCTAVES,
+          maxDragOctaves: state.maxDragOctaves || PREVIEW_PRICE_SCALE_MAX_DRAG_OCTAVES,
           minMove: state.minMove,
           minimumSpan: state.minimumSpan,
           minVisibleTickIntervals: PREVIEW_PRICE_SCALE_MIN_VISIBLE_TICK_INTERVALS,
-          octavesPerPlot: PREVIEW_PRICE_SCALE_OCTAVES_PER_PLOT,
+          octavesPerPlot: effectiveOctavesPerPlot,
           plotHeight: state.plotHeight,
           referenceSpan: state.referenceSpan,
           startFrom: state.startFrom,
@@ -508,10 +533,28 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
         if (!range || !metrics) return false;
         var span = range.to - range.from;
         if (!(span > 0)) return false;
+        var timeScaleApi =
+          chart && typeof chart.timeScale === 'function' ? chart.timeScale() : null;
+        var startLogicalRange =
+          timeScaleApi && typeof timeScaleApi.getVisibleLogicalRange === 'function'
+            ? timeScaleApi.getVisibleLogicalRange()
+            : null;
+        var logicalSpan =
+          startLogicalRange &&
+          typeof startLogicalRange.from === 'number' &&
+          typeof startLogicalRange.to === 'number' &&
+          isFinite(startLogicalRange.from) &&
+          isFinite(startLogicalRange.to) &&
+          startLogicalRange.to > startLogicalRange.from
+            ? startLogicalRange.to - startLogicalRange.from
+            : 0;
+        var plotWidth = Math.max(1, (metrics.width || 0) - (metrics.axisWidth || 0));
         previewPriceScaleBodyPan = {
           latestRange: { from: range.from, to: range.to },
           lastMoveAt: null,
+          lastMoveX: Number(clientX),
           lastMoveY: Number(clientY),
+          logicalPerPixel: logicalSpan > 0 && plotWidth > 0 ? logicalSpan / plotWidth : 0,
           pricePerPixel: span / metrics.height,
           referenceSpan:
             typeof previewPriceScaleReferenceSpan === 'number' && previewPriceScaleReferenceSpan > 0
@@ -519,6 +562,10 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
               : span,
           startAt: Date.now(),
           startFrom: range.from,
+          startLogicalRange:
+            logicalSpan > 0
+              ? { from: startLogicalRange.from, to: startLogicalRange.to }
+              : null,
           startTo: range.to,
           startX: Number(clientX),
           startY: Number(clientY),
@@ -529,7 +576,7 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
         return applyPreviewManualPriceScaleRange(range, previewPriceScaleBodyPan.referenceSpan);
       }
 
-      function movePreviewBodyPricePan(clientY) {
+      function movePreviewBodyPricePan(clientY, clientX) {
         var state = previewPriceScaleBodyPan;
         var y = Number(clientY);
         if (!state || !isFinite(y)) return false;
@@ -545,6 +592,35 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
         }
         state.lastMoveAt = now;
         state.lastMoveY = y;
+        var x = Number(clientX);
+        if (
+          isFinite(x) &&
+          isFinite(state.startX) &&
+          state.startLogicalRange &&
+          state.logicalPerPixel > 0 &&
+          chart &&
+          typeof chart.timeScale === 'function'
+        ) {
+          state.lastMoveX = x;
+          var deltaX = x - state.startX;
+          if (Math.abs(deltaX) > 0.5) {
+            var logicalDelta = -deltaX * state.logicalPerPixel;
+            var nextFrom = state.startLogicalRange.from + logicalDelta;
+            var nextTo = state.startLogicalRange.to + logicalDelta;
+            var timeScaleApi = chart.timeScale();
+            if (
+              timeScaleApi &&
+              typeof timeScaleApi.setVisibleLogicalRange === 'function' &&
+              isFinite(nextFrom) &&
+              isFinite(nextTo) &&
+              nextTo > nextFrom
+            ) {
+              try {
+                timeScaleApi.setVisibleLogicalRange({ from: nextFrom, to: nextTo });
+              } catch (_error) {}
+            }
+          }
+        }
         var priceDelta = (y - state.startY) * state.pricePerPixel;
         state.latestRange = {
           from: state.startFrom + priceDelta,
@@ -699,7 +775,7 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
           return;
         }
         if (previewPriceScaleBodyPan) {
-          movePreviewBodyPricePan(point.y);
+          movePreviewBodyPricePan(point.y, point.x);
           stopPreviewPriceScaleEvent(event);
           return;
         }
@@ -707,16 +783,20 @@ export const LIVE_CHART_PREVIEW_PRICE_SCALE_SCRIPT = String.raw`
         if (!pending) return;
         var dx = Math.abs(point.x - pending.startX);
         var dy = Math.abs(point.y - pending.startY);
-        if (dy > PREVIEW_PRICE_SCALE_BODY_PAN_THRESHOLD_PX && dy > dx * 1.2) {
+        if (dy > PREVIEW_PRICE_SCALE_BODY_PAN_THRESHOLD_PX) {
           if (beginPreviewBodyPricePan(pending.startX, pending.startY)) {
             clearPreviewBodyPanPending();
-            movePreviewBodyPricePan(point.y);
+            movePreviewBodyPricePan(point.y, point.x);
             stopPreviewPriceScaleEvent(event);
           } else {
             clearPreviewBodyPanPending();
           }
         } else if (dx > PREVIEW_PRICE_SCALE_BODY_PAN_THRESHOLD_PX && dx > dy * 1.2) {
-          clearPreviewBodyPanPending();
+          if (isPreviewVerticalPriceMovementBlocked()) {
+            clearPreviewBodyPanPending();
+          } else {
+            pending.startX = point.x;
+          }
         }
       }
 

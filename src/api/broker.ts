@@ -585,7 +585,13 @@ const acceptRawV2BrokerRecord = (
     );
   }
   const tcpAddr = optionalDirectoryString(record, 'tcp_addr');
-  const displayServer = optionalDirectoryString(record, 'display_server');
+  const rawDisplayServer = optionalDirectoryString(record, 'display_server');
+  const displayServer = rawDisplayServer
+    ? rawDisplayServer
+      .replace(/\s*\((?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\)\s*/g, '')
+      .replace(/\s*\([^)]*:\d+\)\s*/g, '')
+      .trim() || undefined
+    : undefined;
   const serverPort =
     typeof record.server_port === 'number' && Number.isFinite(record.server_port)
       ? record.server_port

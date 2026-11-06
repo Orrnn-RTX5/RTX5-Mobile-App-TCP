@@ -6,6 +6,7 @@ import { confirmedPositionFill } from '../../api/orders/confirmedPositionFill';
 import { resolveBrokerExecutionEvidence } from '../../api/orders/executionEvidence';
 import { buildMergedPositions } from '../../state/positionsState.helpers';
 import { buildChartOverlayPayload } from './chartOverlays/buildPayload';
+import { formatTpSlOverlayValueLabel } from './chartOverlays/orderHelpers';
 import { validatePositionLevelChange } from '../trade/positionLevelValidation';
 import { parseChartBridgeMessage } from './chartWebViewBoundary';
 import type { PositionItem } from '../../domain/tradingModels';
@@ -36,7 +37,7 @@ test('confirmed fill merges immediately, keeps the exact broker ticket and entry
   assert.equal(lines[0].price,1.10017);
   assert.equal(lines[0].positionControl?.positionId,position.id);
   assert.equal(lines[0].labelSideText,'BUY 0.003');
-  assert.equal(lines[0].labelValueText,'-0.09000 EUR');
+  assert.equal(lines[0].labelValueText,'-0.09 EUR');
   assert.equal(lines[0].dragKey,undefined);
 });
 
@@ -96,13 +97,13 @@ test('duplicate intents and concurrent requests for one ticket cannot submit twi
   assert.equal(gate.claim({...intent,requestId:3}),true);
 });
 
-test('P/L uses fresh BUY Bid and SELL Ask calibrated to broker account profit, marks estimates and preserves charges', () => {
+test('P/L displays backend position profit directly without frontend tick extrapolation', () => {
   const quote = {bid:1.102,ask:1.103,lastReceivedAt:10_000};
   const buy = positionProfitDisplay(position,quote,10_100);
-  assert.equal(buy.estimated,true); assert.ok(Math.abs(buy.value! - 25.35)<1e-8);
+  assert.deepEqual(buy,{value:12.5,estimated:false});
   const sell = {...position,side:'sell' as const,openPrice:1.104,currentPrice:1.103};
   const result = positionProfitDisplay(sell,{...quote,ask:1.102},10_100);
-  assert.ok(Math.abs(result.value! - 25.35)<1e-8);
+  assert.deepEqual(result,{value:12.5,estimated:false});
   assert.deepEqual(positionProfitDisplay(position,{...quote,stale:true},10_100),{value:12.5,estimated:false});
   assert.deepEqual(positionProfitDisplay(position,quote,100_000),{value:12.5,estimated:false});
   assert.deepEqual(positionProfitDisplay({...position,currentPrice:position.openPrice},quote,10_100),{value:12.5,estimated:false});
@@ -115,12 +116,16 @@ test('entry and protection prices use broker precision across asset classes; lot
     ['XAUUSD',2711.123,3],['XAGUSD',31.1234,4],['BTCUSD',61000.12,2],['US30',42001.5,1]] as const) {
     const p = {...position,symbol,openPrice:price,tp:price+1,sl:price-1};
     const payload = overlay([p],{chartSymbol:symbol,priceDigits:digits,positionControlScope:{...scope,symbol}});
-    assert.equal(payload.priceLines.find(line=>line.id.startsWith('tp-'))?.labelValueText,(price+1).toFixed(digits));
+    assert.equal(
+      payload.priceLines.find(line=>line.id.startsWith('tp-'))?.labelValueText,
+      formatTpSlOverlayValueLabel(symbol, 'buy', price, price + 1, p.volume) || (price+1).toFixed(digits),
+    );
+    assert.equal(payload.priceLines.find(line=>line.id.startsWith('tp-'))?.price,price+1);
     assert.equal(payload.priceLines.find(line=>line.id.startsWith('open-'))?.price,price);
   }
   assert.equal(formatPositionLots(0.003,0.001),'0.003'); assert.equal(formatPositionLots(1.25,0.25),'1.25');
   assert.equal(formatPositionLots(0.003,0.01),'0.003'); assert.equal(formatPositionLots(2,1),'2');
-  assert.equal(overlay([position],{accountCurrency:undefined}).priceLines.find(line=>line.id.startsWith('open-'))?.labelValueText,'+12.500 currency unavailable');
+  assert.equal(overlay([position],{accountCurrency:undefined}).priceLines.find(line=>line.id.startsWith('open-'))?.labelValueText,'+12.50 USD');
 });
 
 test('reverse waits for confirmed close, never opens after failed close or account change; replacement failure is distinct', async () => {

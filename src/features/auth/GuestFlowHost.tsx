@@ -62,6 +62,7 @@ export function GuestFlowHost() {
   const brokerPickerRequest = useRef(0);
   const pickerRequest = brokerPickerRequest.current;
   const startupBrokerSelectionAttempted = useRef(false);
+  const failedGuestBrokersRef = useRef(new Set<string>());
   const [retryAt, setRetryAt] = useState(0); const [now, setNow] = useState(Date.now());
   const [rateForm, setRateForm] = useState<'login' | 'demo'>('demo');
   const [ambiguous, setAmbiguous] = useState(false);
@@ -105,7 +106,14 @@ export function GuestFlowHost() {
     const activeSelection = captureActiveBrokerSession();
     // The pending public broker can differ from the authenticated account.
     // Directory refreshes reconcile that selection, never the private session.
-    const candidates = directory.data.selectableServers.filter(row => row.broker_id === (context?.brokerId ?? brokerId));
+    const targetBrokerId = context?.brokerId ?? brokerId;
+    const normalizedTargetBrokerId = targetBrokerId.trim().toLowerCase();
+    const isAutoSelectedDeadGuestBroker =
+      !isLoggedIn &&
+      (normalizedTargetBrokerId === 'achiever' || failedGuestBrokersRef.current.has(normalizedTargetBrokerId));
+    const candidates = isAutoSelectedDeadGuestBroker
+      ? []
+      : directory.data.selectableServers.filter(row => row.broker_id === targetBrokerId);
     const selected = candidates.find(row => row.market_api_url === (context?.apiBase ?? activeSelection?.session.apiBase)) ?? candidates[0];
     if (!selected) {
       if (context) setPublicBrokerContext(null);
@@ -130,6 +138,7 @@ export function GuestFlowHost() {
       setPublicBrokerContext(selected);
     } catch (error) { setPublicBrokerContext(null); setLocalError(error instanceof Error ? error.message : 'Invalid broker configuration.'); }
   }, [directory.data, brokerId, context, isLoggedIn, brokerPickerVisible]);
+  const shouldFetchBrokerConfig = Boolean(context) && (!isLoggedIn || visible);
   useEffect(() => {
     const currentFlow = getAuthFlowState();
     const retainLoginFields = currentFlow.screen === 'login' && currentFlow.form === 'login' && currentFlow.context === context;
@@ -138,11 +147,14 @@ export function GuestFlowHost() {
     if (!retainLoginFields) { setPassword(''); setName(''); setIdentity(''); }
     if (!context) return;
     setLocalError('');
+  }, [context]);
+  useEffect(() => {
+    if (!context || !shouldFetchBrokerConfig) return;
     const controller = new AbortController();
     void publicBrokerFetch('/broker/config?broker_id=' + encodeURIComponent(context.brokerId), controller.signal).then(response => { if (!response.ok) throw new Error(); return response.json(); })
       .then(payload => { if (isPublicBrokerContextCurrent(context)) setBrokerConfig({ context, payload: payload?.data ?? payload }); }).catch(() => {});
     return () => controller.abort();
-  }, [context]);
+  }, [context, shouldFetchBrokerConfig]);
   useEffect(() => {
     if (!context || isLoggedIn || visible) return;
     const controller = new AbortController();
@@ -150,12 +162,34 @@ export function GuestFlowHost() {
       if (!isPublicBrokerContextCurrent(context)) return;
       const preferences = useUserPreferences.getState();
       if (preferences.isLoggedIn) return;
-      if (!catalog.symbols.includes(preferences.chartSymbol)) preferences.setChartSymbol(catalog.symbols[0]);
-      const saved = preferences.quoteSymbols.filter(symbol => catalog.symbols.includes(symbol));
-      preferences.setQuoteSymbols(saved.length ? saved : catalog.symbols.slice(0, 6)); preferences.setHasSetInitialSymbols(true);
-    }).catch(() => {});
+      const quotedSet = new Set(
+        Array.isArray(catalog.quotes)
+          ? catalog.quotes
+              .filter(row => row.has_quote !== false && (typeof row.bid === 'number' || typeof row.ask === 'number'))
+              .map(row => String(row.symbol))
+          : [],
+      );
+      const candidatePool = quotedSet.size ? catalog.symbols.filter(symbol => quotedSet.has(symbol)) : catalog.symbols;
+      const preferredOrder = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD', 'AUDUSD', 'EURJPY', 'GBPJPY', 'XAGUSD', 'US30'];
+      const prioritizedPool = [
+        ...preferredOrder.filter(symbol => candidatePool.includes(symbol)),
+        ...candidatePool.filter(symbol => !preferredOrder.includes(symbol)),
+      ];
+      if (!candidatePool.includes(preferences.chartSymbol) && prioritizedPool[0]) {
+        preferences.setChartSymbol(prioritizedPool[0]);
+      }
+      const saved = preferences.quoteSymbols.filter(symbol => candidatePool.includes(symbol));
+      preferences.setQuoteSymbols(saved.length ? saved : prioritizedPool.slice(0, 6)); preferences.setHasSetInitialSymbols(true);
+    }).catch(() => {
+      if (controller.signal.aborted || !isPublicBrokerContextCurrent(context) || useUserPreferences.getState().isLoggedIn) return;
+      failedGuestBrokersRef.current.add(context.brokerId.trim().toLowerCase());
+      const fallback = directory.data ? resolveStartupGuestBroker(directory.data.selectableServers, failedGuestBrokersRef.current) : null;
+      if (fallback && fallback.broker_id !== context.brokerId) {
+        void selectGuestBroker(fallback).catch(() => {});
+      }
+    });
     return () => controller.abort();
-  }, [context, isLoggedIn, visible]);
+  }, [context, directory.data, isLoggedIn, visible]);
   useEffect(() => {
     if (!retryAt || !visible) return;
     return scheduleAuthRetryCountdown(retryAt, setNow);

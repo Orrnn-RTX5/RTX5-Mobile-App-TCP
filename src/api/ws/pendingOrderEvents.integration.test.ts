@@ -134,7 +134,7 @@ for (const type of ['buy_limit','sell_limit','buy_stop','sell_stop','buy_stop_li
       .priceLines.find(line => line.id === 'open-90123')!;
     assert.deepEqual(executed, normalMarket, 'filled orders use exactly the regular market-position style and controls');
     assert.equal(executed.price, fillPrice, 'use the broker fill price and position ID, not the pending price or ticket');
-    assert.equal(executed.lineStyle, CHART_LINE_STYLE.Solid);
+    assert.equal(executed.lineStyle, CHART_LINE_STYLE.Dashed);
     assert.equal(executed.labelSideColor, side === 'buy' ? '#2962FF' : '#F23645');
     assert.equal(executed.pendingOrderControl, undefined);
     assert.equal(after.priceLines.find(line => line.id === `order-entry-${peer.ticket}`)?.color, '#F59E0B',

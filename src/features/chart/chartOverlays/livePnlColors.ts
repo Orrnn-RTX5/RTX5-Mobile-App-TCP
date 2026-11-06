@@ -9,8 +9,8 @@ import { GDark, GLight } from '../../../ui/theme/glass';
 
 export const LIVE_CHART_PNL_COLORS = {
   darkCanvas: {
-    profit: GDark.trading.profit,
-    loss: '#FF4D4F',
+    profit: '#5CA8FF',
+    loss: '#FF5A5F',
   },
   lightCanvas: {
     profit: GLight.trading.profit,

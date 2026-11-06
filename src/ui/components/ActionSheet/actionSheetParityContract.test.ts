@@ -163,7 +163,7 @@ test('high-traffic shared action sheets open through immediate action wrappers',
   const accountsSource = readSource('src/features/settings/AccountsScreen.tsx');
   const brokerDetailSource = readSource('src/features/settings/BrokerDetailScreen.tsx');
 
-  assert.match(tradeSource, /runImmediateAction\('trade\.bulkSheet\.open'[\s\S]*showTradeActionSheet\(bulkActionSheetConfig\)/);
+  assert.match(tradeSource, /runImmediateAction\('trade\.bulkSheet\.open'[\s\S]*showTradeActionSheet\((?:themeSheetRefs\.current\.)?bulkActionSheetConfig\)/);
   assert.match(tradeSource, /const bulkActionSheetConfig = useMemo[\s\S]*entryMotion: 'mt5Slide'[\s\S]*runActionAfterClose: false/);
   assert.match(tradeSource, /runImmediateAction\('trade\.positionSheet\.open'[\s\S]*showTradeActionSheet\(\{/);
   assert.match(historySource, /const historySortSheetConfig = useMemo[\s\S]*title: t\('Sort By'\),[\s\S]*presentation: 'mt5Plain'[\s\S]*entryMotion: 'mt5Slide'[\s\S]*runActionAfterClose: false[\s\S]*actions: SORT_OPTIONS\.map/);

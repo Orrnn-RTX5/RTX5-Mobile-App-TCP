@@ -22,6 +22,7 @@ import { normalizeTimestampToMs } from '../core/timeframeUtils';
 import { hasLiveQuoteFeedData, useMarketData } from '../../../query/websocket';
 import { hydratePersistedCandleCache } from '../state/persistedCandleCache';
 import { useUserPreferences } from '../../../state/userPreferences';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../../../state/publicBrokerContext';
 import { MARKET_QUOTE_STALE_AFTER_MS } from '../../../market/quotePolicy';
 import {
   isOrrnnDemoPublicMarketSelection,
@@ -134,6 +135,11 @@ export function useLiveCandles(
   const normalizedTimeframe = useMemo(() => normalizeTimeframeStrict(timeframe), [timeframe]);
   const isLoggedIn = useUserPreferences((state) => state.isLoggedIn);
   const selectedBrokerId = useUserPreferences((state) => state.brokerId);
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const isPublicDemoSelection = isOrrnnDemoPublicMarketSelection({
     brokerId: selectedBrokerId,
     isLoggedIn,

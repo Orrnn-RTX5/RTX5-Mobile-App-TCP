@@ -5,12 +5,9 @@ import test from 'node:test';
 
 const sentrySource = readFileSync(resolve(process.cwd(), 'src/services/sentry.ts'), 'utf8');
 
-test('Sentry keeps native crash reporting without syncing JS breadcrumbs to native', () => {
-  assert.match(sentrySource, /Sentry\.init\(\{/);
-  assert.match(sentrySource, /enabled:\s*isSentryEnabled/);
-  assert.match(sentrySource, /enableLogs:\s*false/);
-  assert.match(sentrySource, /maxBreadcrumbs:\s*0/);
-  assert.match(sentrySource, /beforeSend:\s*\(event\) => redactDiagnosticValue\(event\)/);
-  assert.match(sentrySource, /Sentry\.captureException\(createRedactedError\(error\)\)/);
-  assert.doesNotMatch(sentrySource, /enableNative:\s*false/);
+test('Sentry is disabled in Binary TCP builds with safe no-op wrappers', () => {
+  assert.match(sentrySource, /export const isSentryEnabled = false;/);
+  assert.match(sentrySource, /export const wrapWithSentry = <P extends object>\(Component: ComponentType<P>\): ComponentType<P> =>\s*Component;/);
+  assert.match(sentrySource, /export const captureErrorBoundaryException = \(_error: Error, _errorInfo: ErrorInfo\) => \{/);
+  assert.match(sentrySource, /Sentry disabled in Binary TCP builds/);
 });

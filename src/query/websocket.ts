@@ -2,7 +2,7 @@
  * Core module: websocket.ts
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { apiClient } from '../api/apiClient';
@@ -13,6 +13,7 @@ import type { QuoteTickEvent } from '../api/ws/quoteTickNormalizer';
 import { normalizeQuoteTickTimestampToMs } from '../api/ws/quoteTimestamp';
 import { useTradingState } from '../state/tradingState';
 import { useUserPreferences } from '../state/userPreferences';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../state/publicBrokerContext';
 import {
   captureActiveBrokerSession,
   captureActiveBrokerSessionOwnerStamp,
@@ -449,6 +450,11 @@ export function useWebSocketConnection() {
 export function useMarketData(symbols: string[] = [], active = true) {
   const isLoggedIn = useUserPreferences((state) => state.isLoggedIn);
   const selectedBrokerId = useUserPreferences((state) => state.brokerId);
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const isPublicDemoMarket = isOrrnnDemoPublicMarketSelection({
     brokerId: selectedBrokerId,
     isLoggedIn,
@@ -645,6 +651,11 @@ function useOrrnnDemoPublicLiveSymbolQuote(
   active: boolean,
   commitIntervalMs: number,
 ): Partial<QuoteItem> | undefined {
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const normalizedSymbol = React.useMemo(() => normalizeSymbol(symbol), [symbol]);
   const safeCommitIntervalMs = Math.max(0, Math.floor(commitIntervalMs));
   const quoteContextKey = `${active ? 'active' : 'inactive'}:${normalizedSymbol}`;

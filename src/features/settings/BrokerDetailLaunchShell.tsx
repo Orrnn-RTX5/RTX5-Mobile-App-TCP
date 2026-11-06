@@ -106,16 +106,8 @@ export const BrokerDetailLaunchShell = memo(function BrokerDetailLaunchShell({
             <View style={styles.brokerSummaryBody}>
               <View style={styles.brokerKickerRow}>
                 <Text style={styles.brokerEyebrow}>{t('Selected broker')}</Text>
-                <View style={styles.readyPill}>
-                  <View style={styles.readyDot} />
-                  <Text style={styles.readyText}>{t('Ready')}</Text>
-                </View>
               </View>
               <Text style={styles.brokerName} numberOfLines={1}>{displayName}</Text>
-              <View style={styles.brokerServerPill}>
-                <Ionicons name="server-outline" size={15} color={T.textSub} />
-                <Text style={styles.brokerServerLine} numberOfLines={1}>{server}</Text>
-              </View>
             </View>
           </View>
         </View>
@@ -214,12 +206,11 @@ const LaunchOptionsPanel = memo(function LaunchOptionsPanel({
 
 const LaunchLoginHeader = memo(function LaunchLoginHeader({
   existingLabel,
-  secureLabel,
   title,
   styles,
 }: {
   existingLabel: string;
-  secureLabel: string;
+  secureLabel?: string;
   title: string;
   styles: ReturnType<typeof makeStyles>;
 }) {
@@ -227,14 +218,7 @@ const LaunchLoginHeader = memo(function LaunchLoginHeader({
     <View style={styles.panelHeader}>
       <View style={styles.panelTitleTopRow}>
         <View style={styles.panelTitleRow}>
-          <View style={styles.panelIconMark}>
-            <Ionicons name="key-outline" size={18} color="#2563EB" />
-          </View>
           <Text style={styles.panelEyebrow}>{existingLabel}</Text>
-        </View>
-        <View style={styles.securePill}>
-          <Ionicons name="shield-checkmark-outline" size={14} color={styles.secureText.color} />
-          <Text style={styles.secureText}>{secureLabel}</Text>
         </View>
       </View>
       <Text style={styles.sectionTitle}>{title}</Text>

@@ -23,7 +23,7 @@ function loadSelection(loggedIn = true, directory: (id: string) => Promise<any> 
     setBrokerConnection: (id: string) => { writes.push('broker'); preferences.brokerId = id; },
   };
   const modules: Record<string, unknown> = {
-    '../api/broker': { getBrokerDirectoryForBroker: directory },
+    '../api/broker': { getBrokerDirectoryForBroker: directory, switchTcpBroker: async () => true },
     '../state/publicBrokerContext': publicContext,
     '../state/userPreferences': { useUserPreferences: { getState: () => preferences } },
     '../state/activeBrokerSession': { captureActiveBrokerSession },

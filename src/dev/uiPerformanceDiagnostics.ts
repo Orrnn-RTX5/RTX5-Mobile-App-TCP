@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, type NativeEventSubscription, InteractionManager } from 'react-native';
+import { AppState, type NativeEventSubscription } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import {
@@ -30,6 +30,15 @@ const runOnNextFrame = (callback: () => void) => {
   }
 
   setTimeout(callback, 16);
+};
+
+const runAfterInteractions = (callback: () => void) => {
+  if (typeof globalThis.requestIdleCallback === 'function') {
+    globalThis.requestIdleCallback(() => callback());
+    return;
+  }
+
+  setTimeout(callback, 0);
 };
 
 const createSampleId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -186,7 +195,7 @@ function finalizeUiTrace(
 
   runOnNextFrame(() => {
     const nextFrameMs = getNow() - startedAtMs;
-    InteractionManager.runAfterInteractions(() => {
+    runAfterInteractions(() => {
       const settledMs = getNow() - startedAtMs;
       const handlerMs = handlerFinishedAtMs - startedAtMs;
 

@@ -21,7 +21,7 @@ test('bookkeeping waits for a paint opportunity and can be cancelled by immediat
   const frames = new Map<number, FrameRequestCallback>();
   let nextId = 0;
   globalThis.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
-  globalThis.cancelAnimationFrame = id => { frames.delete(id); };
+  globalThis.cancelAnimationFrame = id => { if (typeof id === 'number') frames.delete(id); };
   const cancels: Array<() => void> = [];
   let committed = 0;
   try {

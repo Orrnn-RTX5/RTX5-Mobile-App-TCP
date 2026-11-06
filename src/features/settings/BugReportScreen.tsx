@@ -121,7 +121,7 @@ export function BugReportScreen({ active = true, insetsTop, insetsBottom, onClos
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { requestClose(); return true; });
     return () => { unregister(); subscription.remove(); };
   }, [active, requestClose]);
-  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+  useEffect(() => (navigation as any).addListener('beforeRemove', (event: any) => {
     if (!active || leavingRef.current) return;
     event.preventDefault(); requestClose(() => navigation.dispatch(event.data.action));
   }), [active, navigation, requestClose]);

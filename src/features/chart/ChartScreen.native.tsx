@@ -21,7 +21,7 @@ import { AppMenuIcon } from '../../ui/components/AppMenuIcon';
 import { useIsFocused } from '@react-navigation/native';
 import { useAuthMarketDemandAllowed } from '../trade/useAuthMarketVisibility';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, AppState, type AppStateStatus, Dimensions, Keyboard, PanResponder, Platform, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { Gesture } from 'react-native-gesture-handler';
@@ -109,6 +109,7 @@ import { useLiveCandles } from '../../domain/candles/hooks/useLiveCandles';
 import { INITIAL_HISTORY_LIMIT, liveCandlesEngine } from '../../api/ws/liveCandlesEngine';
 import { quotesWsService, type QuoteTickEvent } from '../../api/ws/quotesSocket';
 import { orrnnDemoPublicMarketSocket } from '../../api/ws/orrnnDemoPublicMarketSocket';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../../state/publicBrokerContext';
 import {
   isOrrnnDemoPublicMarketSelection,
   ORRNN_DEMO_PUBLIC_CACHE_NAMESPACE,
@@ -348,6 +349,7 @@ import { PriceDragControl } from '../trade/PriceDragControl';
 import { resolveChartTradeButtonQuote } from "./components/ChartTradeButtonsFeature/quoteFallback";
 import { CHART_HEADER_GLYPH_SIZE, CHART_HEADER_ICON_SIZE, TvCrosshair, TvLayers, TvOneClick, TvTradeClock } from "./components/ChartToolbarIcons";
 import { ChartWindowManagerOverlay } from './components/ChartWindowManagerOverlay';
+import { OneClickRiskDisclaimerOverlay } from './components/OneClickRiskDisclaimerOverlay';
 import {
   ChartWindowsLayout,
   type ChartWindowPaneFrame,
@@ -793,7 +795,7 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
     refreshPositions(String(accountLogin));
     const interval = setInterval(() => {
       refreshPositions(String(accountLogin));
-    }, 10000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [accountLogin, chartRuntimeActive, refreshPositions]);
 
@@ -870,6 +872,11 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
     })),
   );
   const { mutate: removeServerWatchlistSymbol } = useRemoveWatchlistMutation();
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const isPublicDemoMarket = isOrrnnDemoPublicMarketSelection({
     brokerId: selectedBrokerId,
     isLoggedIn,
@@ -962,6 +969,8 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
   const setChartShowOnChartItem = useUserPreferences((s) => s.setChartShowOnChartItem);
   const oneClickAccepted = useUserPreferences((s) => s.oneClickAccepted);
   const setOneClickAccepted = useUserPreferences((s) => s.setOneClickAccepted);
+  const setOneClickDisclaimerAccepted = useUserPreferences((s) => s.setOneClickDisclaimerAccepted);
+  const [showOneClickDisclaimer, setShowOneClickDisclaimer] = useState(false);
   const isVerticalScrollingLocked = chartVerticalScrollingLocked;
   const isChartAutoScaleEnabled = chartAutoScaleEnabled;
   const resolvedChartColors = useMemo(
@@ -6066,7 +6075,7 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
         price: entryPrice,
         color: pendingEntryColor,
         lineWidth: 1,
-        lineStyle: CHART_LINE_STYLE.Solid,
+        lineStyle: CHART_LINE_STYLE.Dashed,
         axisLabelVisible: false,
         title: chartTradePreviewEntryLabel,
         labelPlacement: 'line',
@@ -6080,7 +6089,7 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
         price: chartTradeStopLimitPrice,
         color: T.text,
         lineWidth: 1,
-        lineStyle: CHART_LINE_STYLE.Solid,
+        lineStyle: CHART_LINE_STYLE.Dashed,
         axisLabelVisible: false,
         title: showChartTradeStopLabelsOnChart
           ? 'STOP LIMIT PRICE'
@@ -7773,7 +7782,7 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
       },
       // Resets the chart's zoom, scale, and scroll state back to the default view
       {
-        label: t('Reset'),
+        label: t('Reset Chart'),
         icon: <Ionicons name="refresh-outline" size={20} color={TEXT_MUTED} />,
         onPress: handleResetChartViewport,
       },
@@ -7966,6 +7975,11 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
       oneClick: () => {
         runImmediateAction('chart.oneClick.toggle', () => {
           const currentState = useUserPreferences.getState();
+          if (!currentState.oneClickDisclaimerAccepted) {
+            setOneClickDisclaimerAccepted(true);
+            setShowOneClickDisclaimer(true);
+            return;
+          }
           setOneClickAccepted(!currentState.oneClickAccepted);
         });
       },
@@ -9977,7 +9991,11 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
       const nextAccumulator = isChartMarketClosed
         ? previousAccumulator
         : accumulateCurrentChartBid(exactQuote, canonicalCandles);
-      if (nextAccumulator === previousAccumulator && previousAccumulator) {
+      if (
+        nextAccumulator === previousAccumulator &&
+        previousAccumulator &&
+        retainedChartTradeDisplayQuoteRef.current?.bid === exactQuote.bid
+      ) {
         return;
       }
       retainedChartTradeDisplayQuoteRef.current = exactQuote;
@@ -10580,11 +10598,27 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
             return line;
           }
 
-          const valueLabel = previewPrice.toFixed(displayDecimals);
+          const pointsValueLabel = formatTpSlOverlayValueLabel(
+            position.symbol,
+            position.side,
+            entryPrice,
+            previewPrice,
+            Number(position.volume),
+          );
+          const valueLabel = pointsValueLabel || previewPrice.toFixed(displayDecimals);
           return {
             ...line,
             price: previewPrice,
-            title: target.kind.toUpperCase() + ' ' + valueLabel,
+            title: pointsValueLabel
+              ? formatTpSlOverlayLabel(
+                  target.kind,
+                  position.symbol,
+                  position.side,
+                  entryPrice,
+                  previewPrice,
+                  Number(position.volume),
+                )
+              : target.kind.toUpperCase() + ' ' + valueLabel,
             labelSideText: target.kind.toUpperCase(),
             labelValueText: valueLabel,
             labelValueColor: line.color,
@@ -10714,9 +10748,10 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
   // Keep the ref in sync so the onMessage CHART_READY handler can
   // immediately push the latest overlay without waiting for the effect.
   const applyLiveChartTradeOverlayQuote = useCallback((quote: ChartTradeOverlayLiveQuote) => {
+    const latestPositions = usePositionsState.getState().positions;
     const patches = buildChartOpenPositionLabelPatches({
       chartSymbol,
-      positions,
+      positions: latestPositions.length > 0 ? latestPositions : positions,
       colors: resolvedChartColors,
       sellColor: T.trading.sell.primary,
       liveBid: quote.bid,
@@ -11101,7 +11136,7 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
         >
           <TvTradeClock
             size={CHART_HEADER_ICON_SIZE}
-            color={chartDirectProtectionActive ? BLUE : (isDark ? '#B0BEC5' : HEADER_CONTROL_COLOR)}
+            color={chartDirectProtectionActive ? BLUE : HEADER_CONTROL_COLOR}
             active={chartDirectProtectionActive}
           />
           {chartSlTpBackendLocked ? (
@@ -13515,6 +13550,21 @@ const ChartScreenInner = React.memo(function ChartScreenInner({
         onSetHorizontal={() => chartWindows.setLayout('horizontal')}
         onSetVertical={() => chartWindows.setLayout('vertical')}
         onMovePane={chartWindows.movePane}
+      />
+
+      <OneClickRiskDisclaimerOverlay
+        visible={showOneClickDisclaimer}
+        isDark={isDark}
+        onCancel={() => {
+          setOneClickDisclaimerAccepted(true);
+          setShowOneClickDisclaimer(false);
+          setOneClickAccepted(false);
+        }}
+        onAccept={() => {
+          setOneClickDisclaimerAccepted(true);
+          setOneClickAccepted(true);
+          setShowOneClickDisclaimer(false);
+        }}
       />
 
       {/* While the SL/TP trade sheet is open (it portals over this screen),

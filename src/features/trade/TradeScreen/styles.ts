@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { spacing } from '../../../ui/theme/index';
-import type { ThemeColors } from '../../../ui/theme/glass';
+import { GDark, GLight, type ThemeColors } from '../../../ui/theme/glass';
 
 const SETTINGS_DARK_BACKGROUND = '#121212';
 const SETTINGS_DARK_CARD_BACKGROUND = '#1E1E1E';
@@ -16,7 +16,7 @@ const SETTINGS_DARK_CARD_BACKGROUND = '#1E1E1E';
  */
 const TRADE_SUMMARY_OVERSCROLL_BLEED = 96;
 
-export function makeTradeScreenStyles(T: ThemeColors, isDark: boolean) {
+function createTradeScreenStyles(T: ThemeColors, isDark: boolean) {
   const screenBg = isDark ? SETTINGS_DARK_BACKGROUND : T.bg;
   const cardBg = isDark ? SETTINGS_DARK_CARD_BACKGROUND : T.glass2;
 
@@ -236,14 +236,68 @@ export function makeTradeScreenStyles(T: ThemeColors, isDark: boolean) {
       letterSpacing: 0,
     },
     positionsHeader: {
-      marginTop: spacing.lg,
+      marginTop: spacing.md,
       marginHorizontal: spacing.md,
       paddingVertical: 8,
       paddingHorizontal: 2,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      gap: 10,
       borderBottomWidth: 1,
+    },
+    sectionSwitcher: {
+      flex: 1,
+      minWidth: 0,
+      padding: 3,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: T.border,
+      backgroundColor: isDark ? '#181A20' : T.glass1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    sectionTab: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 34,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 9,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+    },
+    sectionTabActive: {
+      backgroundColor: isDark ? '#262932' : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.10)' : T.border,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.22 : 0.06,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    sectionTabText: {
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 0,
+      flexShrink: 1,
+    },
+    sectionBadge: {
+      minWidth: 20,
+      height: 18,
+      paddingHorizontal: 5,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionBadgeText: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     positionsHeaderLeft: {
       flexDirection: 'row',
@@ -267,10 +321,14 @@ export function makeTradeScreenStyles(T: ThemeColors, isDark: boolean) {
     positionsTitle: { fontSize: 19, fontWeight: '600', letterSpacing: 0 },
     positionsMeta: { marginTop: 2, fontSize: 13, fontWeight: '500' },
     bulkButton: {
-      paddingHorizontal: 11,
-      paddingVertical: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      minHeight: 34,
       borderRadius: 999,
       borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
     },
     /* Empty state */
     emptyState: {
@@ -451,6 +509,15 @@ export function makeTradeScreenStyles(T: ThemeColors, isDark: boolean) {
       textAlign: 'right',
     },
   });
+}
+
+const DARK_TRADE_SCREEN_STYLES = createTradeScreenStyles(GDark, true);
+const LIGHT_TRADE_SCREEN_STYLES = createTradeScreenStyles(GLight, false);
+
+export function makeTradeScreenStyles(T: ThemeColors, isDark: boolean) {
+  if (T === GDark && isDark) return DARK_TRADE_SCREEN_STYLES;
+  if (T === GLight && !isDark) return LIGHT_TRADE_SCREEN_STYLES;
+  return createTradeScreenStyles(T, isDark);
 }
 
 export type TradeScreenStyles = ReturnType<typeof makeTradeScreenStyles>;

@@ -29,6 +29,7 @@ import { useUIState } from '../../state/uiState';
 import { quotesWsService, type QuoteTickEvent } from '../../api/ws/quotesSocket';
 import { orrnnDemoPublicMarketSocket } from '../../api/ws/orrnnDemoPublicMarketSocket';
 import { isOrrnnDemoPublicMarketSelection } from '../../api/orrnnDemoPublicMarket';
+import { getPublicBrokerContext, subscribePublicBrokerContext } from '../../state/publicBrokerContext';
 import { getPublicMarketStatus, subscribePublicMarketStatus } from '../../state/publicMarketStatus';
 import { useTheme } from '../../ui/theme/useTheme';
 import { ThemeColors } from '../../ui/theme/glass';
@@ -290,7 +291,7 @@ type QuotesRotationTheme = {
   cardBackground: string;
 };
 
-type AnimatedColorValue = Animated.AnimatedInterpolation<string | number>;
+type AnimatedColorValue = Animated.AnimatedInterpolation<string | number> | string;
 
 type QuoteSheetOptionOptions = {
   routeChange?: boolean;
@@ -493,17 +494,21 @@ function useQuotesThemeRotation(isDark: boolean, enabled: boolean) {
   const previousTheme = QUOTES_THEME_ROTATION[previousIndex];
   const activeTheme = QUOTES_THEME_ROTATION[activeIndex];
 
-  const animatedFullscreenBackground = interpolateThemeColor(
-    transition,
-    previousTheme.fullscreenBackground,
-    activeTheme.fullscreenBackground,
-  );
+  const animatedFullscreenBackground = rotationLength <= 1
+    ? activeTheme.fullscreenBackground
+    : interpolateThemeColor(
+      transition,
+      previousTheme.fullscreenBackground,
+      activeTheme.fullscreenBackground,
+    );
 
-  const animatedCardBackground = interpolateThemeColor(
-    transition,
-    previousTheme.cardBackground,
-    activeTheme.cardBackground,
-  );
+  const animatedCardBackground = rotationLength <= 1
+    ? activeTheme.cardBackground
+    : interpolateThemeColor(
+      transition,
+      previousTheme.cardBackground,
+      activeTheme.cardBackground,
+    );
 
   return {
     activeTheme,
@@ -2173,6 +2178,11 @@ const QuotesScreenInner = React.memo(function QuotesScreenInner({ isScreenFocuse
   const isDark = useIsDarkTheme();
   const isLoggedIn = useUserPreferences((s) => s.isLoggedIn);
   const selectedBrokerId = useUserPreferences((s) => s.brokerId);
+  useSyncExternalStore(
+    subscribePublicBrokerContext,
+    getPublicBrokerContext,
+    getPublicBrokerContext,
+  );
   const isPublicDemoMarket = isOrrnnDemoPublicMarketSelection({
     brokerId: selectedBrokerId,
     isLoggedIn,
@@ -3264,7 +3274,7 @@ const QuotesScreenInner = React.memo(function QuotesScreenInner({ isScreenFocuse
           <FlatList
             data={showInitialQuotesSkeleton ? EMPTY_QUOTE_SYMBOLS : filtered}
             keyExtractor={(sym) => sym}
-            extraData={`${isEditing ? 'edit' : 'view'}:${quoteViewMode}:${stackedQuoteLayout ? 'stacked' : 'inline'}:${scopedFeedHealth.status}:${scopedFeedHealth.reasonCategory}:${scopedFeedActionsAllowed ? 'live' : 'blocked'}:${showInitialQuotesSkeleton ? 'initial-loading' : 'ready'}`}
+            extraData={`${isDark ? 'dark' : 'light'}:${isEditing ? 'edit' : 'view'}:${quoteViewMode}:${stackedQuoteLayout ? 'stacked' : 'inline'}:${scopedFeedHealth.status}:${scopedFeedHealth.reasonCategory}:${scopedFeedActionsAllowed ? 'live' : 'blocked'}:${showInitialQuotesSkeleton ? 'initial-loading' : 'ready'}`}
             renderItem={renderQuoteItem}
             // Text and metadata can grow: let FlatList measure real row heights.
             style={s.list}
@@ -3322,18 +3332,20 @@ const QuotesScreenInner = React.memo(function QuotesScreenInner({ isScreenFocuse
         </View>
       </Screen>
 
-      <AddSymbolModal
-        visible={showAddModal}
-        onClose={closeAddSymbolModal}
-        onAdd={(sym: string) => {
-          addQuoteSymbol(sym);
-          syncServerAdd(sym);
-        }}
-        T={T}
-        isDark={isDark}
-        existingSymbols={quoteSymbols}
-        cardBackground={animatedCardBackground}
-      />
+      {showAddModal ? (
+        <AddSymbolModal
+          visible={showAddModal}
+          onClose={closeAddSymbolModal}
+          onAdd={(sym: string) => {
+            addQuoteSymbol(sym);
+            syncServerAdd(sym);
+          }}
+          T={T}
+          isDark={isDark}
+          existingSymbols={quoteSymbols}
+          cardBackground={animatedCardBackground}
+        />
+      ) : null}
     </View>
   );
 });

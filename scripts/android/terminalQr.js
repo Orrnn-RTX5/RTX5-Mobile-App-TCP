@@ -3,12 +3,21 @@ const { isIP } = require('node:net');
 
 function printProjectQr(url) {
   const expoRoot = path.dirname(require.resolve('expo/package.json'));
-  const cliRoot = path.dirname(require.resolve('@expo/cli', { paths: [expoRoot] }));
-  const qr = require(require.resolve('qrcode-terminal', { paths: [cliRoot] }));
+  const cliRoot = path.dirname(require.resolve('@expo/cli/package.json', { paths: [expoRoot] }));
+  const expoPkg = require('expo/package.json');
+  const sdkMajor = String(expoPkg.version || '58').split('.')[0];
   console.log('\nRTX5 - Scan this QR in Expo Go\n');
-  qr.generate(url, { small: true });
+  try {
+    const expoQr = require(path.join(cliRoot, 'build', 'src', 'utils', 'qr.js'));
+    expoQr.printQRCode(url).print();
+  } catch {
+    try {
+      const qr = require(require.resolve('qrcode-terminal', { paths: [cliRoot] }));
+      qr.generate(url, { small: true });
+    } catch {}
+  }
   console.log(`\nProject URL: ${url}`);
-  console.log('Android: use Expo Go for SDK 54. Keep this terminal open.');
+  console.log(`Android: use Expo Go for SDK ${sdkMajor}. Keep this terminal open.`);
 }
 
 // Expo omits its QR when stdout is redirected (including task terminals).
@@ -36,8 +45,8 @@ function watchStartupQr({ port, hostType, useExpoGo, projectRoot, sdkVersion,
         : `rtx5://expo-development-client/?url=${encodeURIComponent(`http://${client.hostUri}`)}`;
       if (prepare) await prepare(manifest);
       if (stopped) return;
-      print(url);
       stop();
+      print(url);
     } catch {
       // Startup and tunnel connection can take a moment; retry while Metro lives.
     } finally {

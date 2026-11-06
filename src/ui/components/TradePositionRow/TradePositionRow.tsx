@@ -172,24 +172,28 @@ function TradePositionRowComponent({
     releaseOverlayActionLock(320);
   };
 
-  const panGesture = Gesture.Pan()
-    .enabled(Platform.OS !== 'ios')
-    .activeOffsetX(TRADE_ROW_SWIPE_ACTIVE_OFFSET_X)
-    .failOffsetY(TRADE_ROW_SWIPE_FAIL_OFFSET_Y)
-    .onStart(() => {
-      startX.value = translateX.value;
-    })
-    .onUpdate((event) => {
-      const nextX = startX.value + event.translationX;
-      translateX.value = Math.max(0, Math.min(TRADE_ROW_ACTIONS_WIDTH, nextX));
-    })
-    .onEnd((event) => {
-      if (event.velocityX < TRADE_ROW_SWIPE_OPEN_VELOCITY_X || translateX.value < TRADE_ROW_ACTIONS_WIDTH / 2) {
-        translateX.value = withSpring(0, { damping: 20, stiffness: 200, overshootClamping: true });
-      } else {
-        translateX.value = withSpring(TRADE_ROW_ACTIONS_WIDTH, { damping: 20, stiffness: 200, overshootClamping: true });
-      }
-    });
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(Platform.OS !== 'ios')
+        .activeOffsetX(TRADE_ROW_SWIPE_ACTIVE_OFFSET_X)
+        .failOffsetY(TRADE_ROW_SWIPE_FAIL_OFFSET_Y)
+        .onStart(() => {
+          startX.value = translateX.value;
+        })
+        .onUpdate((event) => {
+          const nextX = startX.value + event.translationX;
+          translateX.value = Math.max(0, Math.min(TRADE_ROW_ACTIONS_WIDTH, nextX));
+        })
+        .onEnd((event) => {
+          if (event.velocityX < TRADE_ROW_SWIPE_OPEN_VELOCITY_X || translateX.value < TRADE_ROW_ACTIONS_WIDTH / 2) {
+            translateX.value = withSpring(0, { damping: 20, stiffness: 200, overshootClamping: true });
+          } else {
+            translateX.value = withSpring(TRADE_ROW_ACTIONS_WIDTH, { damping: 20, stiffness: 200, overshootClamping: true });
+          }
+        }),
+    [startX, translateX],
+  );
 
   const iosSwipePanResponder = useMemo(
     () =>
@@ -242,14 +246,20 @@ function TradePositionRowComponent({
   // Visible trade rows commit directly on every symbol tick for MT5-like cadence.
   const liveQuote = useLiveSymbolQuote(item.symbol, active, 0);
   const { data: instrumentMeta } = useInstrumentMeta(item.symbol, active);
+  // Subscribe to this row's live backend position snapshot while active so
+  // server-pushed P/L (`pnl`) and `currentPrice` updates render immediately
+  // without frontend calculation or full FlatList re-renders.
+  const livePosition = usePositionsState((state) =>
+    active ? (state.positions.find((pos) => pos.id === item.id) ?? item) : item,
+  );
 
-  const livePrice = resolveLivePositionPrice(item, liveQuote);
+  const livePrice = resolveLivePositionPrice(livePosition, liveQuote);
   const pointValue = resolveTradePositionPointValue({ instrumentMeta, liveQuote });
   const pointText = formatPointSize(pointValue);
   const leverageText = formatTradeLeverage(accountLeverage);
-  const limitsText = formatTradeLimits(item);
+  const limitsText = formatTradeLimits(livePosition);
 
-  const displayPnl = resolveLivePositionPnl(item, liveQuote);
+  const displayPnl = resolveLivePositionPnl(livePosition, liveQuote);
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -440,27 +450,29 @@ function TradePositionRowComponent({
         )}
 
         {/* Render overlay on top within a clipping wrapper so shadows stay intact */}
-        <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 16 }]} pointerEvents="box-none">
-          <OverlayActions
-            T={T}
-            isDark={isDark}
-            dividerColor={dividerColor}
-            overlayActionLocked={overlayActionLocked}
-            overlayStyle={overlayStyle}
-            onClose={() => runOverlayAction(() => closePositionImmediately(item, {
-              quote: liveQuote,
-              resolvedLogin: tradingLogin,
-            }))}
-            onModify={() => runOverlayAction(navigateToModifyPosition)}
-            onOrderTicket={() => runOverlayAction(navigateToOrderTicket)}
-            onOpenChart={() => runOverlayAction(() => {
-              setChartSymbol(item.symbol);
-              router.push('/(tabs)/chart');
-            })}
-            onBulk={onBulkPress ? () => runOverlayAction(onBulkPress) : undefined}
-            onCloseSell={onCloseSellPress ? () => runOverlayAction(onCloseSellPress) : undefined}
-          />
-        </View>
+        {active ? (
+          <View style={[StyleSheet.absoluteFill, { overflow: 'hidden', borderRadius: 16 }]} pointerEvents="box-none">
+            <OverlayActions
+              T={T}
+              isDark={isDark}
+              dividerColor={dividerColor}
+              overlayActionLocked={overlayActionLocked}
+              overlayStyle={overlayStyle}
+              onClose={() => runOverlayAction(() => closePositionImmediately(item, {
+                quote: liveQuote,
+                resolvedLogin: tradingLogin,
+              }))}
+              onModify={() => runOverlayAction(navigateToModifyPosition)}
+              onOrderTicket={() => runOverlayAction(navigateToOrderTicket)}
+              onOpenChart={() => runOverlayAction(() => {
+                setChartSymbol(item.symbol);
+                router.push('/(tabs)/chart');
+              })}
+              onBulk={onBulkPress ? () => runOverlayAction(onBulkPress) : undefined}
+              onCloseSell={onCloseSellPress ? () => runOverlayAction(onCloseSellPress) : undefined}
+            />
+          </View>
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );

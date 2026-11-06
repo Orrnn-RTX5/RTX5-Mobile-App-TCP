@@ -9,6 +9,7 @@
  * Encrypted Binary TCP tunnel (:4443) and unpacks the 136-byte response (0x39).
  */
 import { captureActiveBrokerSession } from '../state/activeBrokerSession';
+import { timedFetch } from '../utils/apiLatency';
 
 export const BINARY_ORDER_REQ_HEADER_SIZE = 128;
 export const BINARY_ORDER_RESP_HEADER_SIZE = 136;
@@ -409,16 +410,26 @@ export async function executeBinaryOrderFast(
   const onAbort = () => controller.abort();
   options?.signal?.addEventListener('abort', onAbort, { once: true });
   try {
-    const res = await fetch(`${httpOrigin}/__rtx5_binary_order`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        Accept: 'application/octet-stream',
-        Authorization: `Bearer ${capture.credentials.accessToken}`,
+    const res = await timedFetch(
+      `${httpOrigin}/__rtx5_binary_order`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          Accept: 'application/octet-stream',
+          Authorization: `Bearer ${capture.credentials.accessToken}`,
+        },
+        body: reqBytes as unknown as BodyInit,
+        signal: controller.signal,
       },
-      body: reqBytes as unknown as BodyInit,
-      signal: controller.signal,
-    });
+      {
+        label: 'binaryTcp.order',
+        method: 'POST',
+        endpoint: '/__rtx5_binary_order',
+        source: 'trade',
+        timeoutMs,
+      },
+    );
     if (res.status === 404 || res.status === 502 || res.status === 504) {
       return null;
     }

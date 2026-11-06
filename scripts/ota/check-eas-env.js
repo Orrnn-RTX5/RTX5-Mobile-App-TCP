@@ -85,10 +85,10 @@ if (missing.length > 0) {
 }
 
 const requiredDemoContract = new Map([
-  ['EXPO_PUBLIC_DEMO_API_BASE_URL', 'https://demomanager.orrnn.com/api/v1'],
-  ['EXPO_PUBLIC_ORRNN_DEMO_BROKER_ID', 'orrnn-demo'],
+  ['EXPO_PUBLIC_DEMO_API_BASE_URL', 'http://127.0.0.1:18404/api/v1'],
+  ['EXPO_PUBLIC_ORRNN_DEMO_BROKER_ID', 'yo4x'],
   ['EXPO_PUBLIC_ORRNN_DEMO_INITIAL_BALANCE', '10000'],
-  ['EXPO_PUBLIC_ORRNN_DEMO_ORIGIN_BROKER', 'orrnn-demo-mobile'],
+  ['EXPO_PUBLIC_ORRNN_DEMO_ORIGIN_BROKER', 'yo4x-mobile'],
 ]);
 const mismatchedDemoContract = [...requiredDemoContract.entries()].filter(
   ([name, expected]) => configured.get(name) !== expected,

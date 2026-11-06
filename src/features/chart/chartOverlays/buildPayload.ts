@@ -17,7 +17,7 @@ import type { LoginOrder } from '../../../api/orders';
 import type { ClosedPosition } from '../../../api/positions';
 import type { PositionItem, QuoteItem } from '../../../domain/tradingModels';
 import type { ChartColorsConfig } from '../../../state/userPreferences';
-import { formatLivePositionPnl } from '../../trade/livePositionMetrics';
+import { formatLivePositionPnl, resolveLivePositionPnl } from '../../trade/livePositionMetrics';
 import { formatPositionLots, positionProfitDisplay, positionControlKey, type ChartPositionScope } from '../chartPositionControls';
 import type { ChartShowOnChartSettings } from '../chartShowOnChart';
 import {
@@ -27,6 +27,10 @@ import {
   sanitizeCandles,
 } from './markerCollections';
 import { buildChartTradeHistoryOverlay } from './tradeHistory';
+import {
+  formatTpSlOverlayLabel,
+  formatTpSlOverlayValueLabel,
+} from './orderHelpers';
 import { buildChartPositionStopDragKey } from './positionStopDragKeys';
 import { buildPendingOrderLines } from './lineBuilders';
 import { resolveLiveChartPnlColor } from './livePnlColors';
@@ -197,14 +201,20 @@ const buildOpenPositionLabelPatch = (
   }
 
   const profit = positionProfitDisplay(position, liveQuote);
-  const livePnl = profit.value ?? NaN;
-  const labelValueText = `${profit.value === null ? '—' : formatLivePositionPnl(livePnl)} ${accountCurrency?.trim() || 'currency unavailable'}`;
+  const livePnl = profit.value ?? resolveLivePositionPnl(position, liveQuote);
+  const currency = accountCurrency?.trim() || 'USD';
+  const labelValueText = `${Number.isFinite(livePnl) ? formatLivePositionPnl(livePnl, 2) : '—'} ${currency}`;
+  const sideColor = resolveOpenPositionSideColor(position.side, colors, sellColor);
 
   return {
     id: `open-${position.id}`,
-    title: `${position.side === 'sell' ? 'SELL' : 'BUY'} ${formatPositionLots(position.volume, liveQuote?.stepVolume)} ${labelValueText}`,
+    title: `${position.side === 'sell' ? 'SELL' : 'BUY'} ${formatPositionLots(position.volume, liveQuote?.stepVolume)}, ${labelValueText}`,
     labelValueText,
-    labelValueColor: resolveLiveChartPnlColor(livePnl, colors.background, '#808892'),
+    // FIX (Trade Line Changing Price Color Matches Buy/Sell Lot Color):
+    // Keep the changing live P/L price color on the open-position trade line identical
+    // to the side ("BUY 0.01" / "SELL 0.01") color so the changing price has the exact
+    // same color as the buy/sell lot text on that line.
+    labelValueColor: sideColor,
   };
 };
 
@@ -378,9 +388,9 @@ export const buildChartOverlayPayload = ({
     addUniquePriceLine(priceLines, {
       id: `open-${position.id}`,
       price: parsedPrice,
-      color: '#2962FF',
+      color: sideColor,
       lineWidth: 1,
-      lineStyle: CHART_LINE_STYLE.Solid,
+      lineStyle: CHART_LINE_STYLE.Dashed,
       axisLabelVisible: true,
       title: labelPatch.title,
       labelSideText: sideLabel,
@@ -395,6 +405,13 @@ export const buildChartOverlayPayload = ({
       const tpValue = Number(position.tp);
       if (Number.isFinite(tpValue) && tpValue > 0) {
         const tpColor = colors.tradeTpSl || resolveLiveChartPnlColor(1, colors.background, '#4597FF');
+        const tpPointsValueLabel = formatTpSlOverlayValueLabel(
+          position.symbol,
+          position.side,
+          parsedPrice,
+          tpValue,
+          Number(position.volume),
+        );
         addUniquePriceLine(priceLines, {
           id: `tp-${position.id}`,
           price: tpValue,
@@ -402,9 +419,18 @@ export const buildChartOverlayPayload = ({
           lineWidth: 1,
           lineStyle: CHART_LINE_STYLE.Dashed,
           axisLabelVisible: false,
-          title: `TP ${formatLevel(tpValue)}`,
+          title: tpPointsValueLabel
+            ? formatTpSlOverlayLabel(
+                'tp',
+                position.symbol,
+                position.side,
+                parsedPrice,
+                tpValue,
+                Number(position.volume),
+              )
+            : `TP ${formatLevel(tpValue)}`,
           labelSideText: 'TP',
-          labelValueText: formatLevel(tpValue),
+          labelValueText: tpPointsValueLabel || formatLevel(tpValue),
           labelSideColor: tpColor,
           labelValueColor: tpColor,
           labelPlacement: 'line',
@@ -418,6 +444,13 @@ export const buildChartOverlayPayload = ({
       const slValue = Number(position.sl);
       if (Number.isFinite(slValue) && slValue > 0) {
         const slColor = colors.tradeStopOut || '#F23645';
+        const slPointsValueLabel = formatTpSlOverlayValueLabel(
+          position.symbol,
+          position.side,
+          parsedPrice,
+          slValue,
+          Number(position.volume),
+        );
         addUniquePriceLine(priceLines, {
           id: `sl-${position.id}`,
           price: slValue,
@@ -425,9 +458,18 @@ export const buildChartOverlayPayload = ({
           lineWidth: 1,
           lineStyle: CHART_LINE_STYLE.Dashed,
           axisLabelVisible: false,
-          title: `SL ${formatLevel(slValue)}`,
+          title: slPointsValueLabel
+            ? formatTpSlOverlayLabel(
+                'sl',
+                position.symbol,
+                position.side,
+                parsedPrice,
+                slValue,
+                Number(position.volume),
+              )
+            : `SL ${formatLevel(slValue)}`,
           labelSideText: 'SL',
-          labelValueText: formatLevel(slValue),
+          labelValueText: slPointsValueLabel || formatLevel(slValue),
           labelSideColor: slColor,
           labelValueColor: slColor,
           labelPlacement: 'line',

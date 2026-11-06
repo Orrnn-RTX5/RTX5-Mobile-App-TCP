@@ -51,6 +51,12 @@ const requestSelectedBrokerHealth: SelectedBrokerHealthRequester = (healthUrl) =
 const isHealthProbeTimeout = (error: unknown): boolean =>
   error instanceof Error && error.name === 'AbortError';
 
+const SELECTED_BROKER_HEALTH_CACHE_TTL_MS = 60_000;
+const selectedBrokerHealthCache = new Map<string, number>();
+
+const isLoopbackHealthUrl = (healthUrl: string): boolean =>
+  /^http:\/\/(?:127\.0\.0\.1|localhost|10\.0\.2\.2)(?::\d+)?\/health$/i.test(healthUrl);
+
 /**
  * A bounded reachability check for the exact selected broker server. Like the
  * login probe (checkBrokerServerHealth), a timeout is retried once: the first
@@ -66,15 +72,33 @@ export async function probeSelectedBrokerHealth(
   const healthUrl = buildSelectedBrokerHealthUrl(serverUrl);
   if (!healthUrl) return false;
 
+  if (requester === requestSelectedBrokerHealth) {
+    if (isLoopbackHealthUrl(healthUrl)) {
+      return true;
+    }
+    const cachedUntil = selectedBrokerHealthCache.get(healthUrl);
+    if (cachedUntil && cachedUntil > Date.now()) {
+      return true;
+    }
+  }
+
   try {
     const response = await requester(healthUrl);
-    return await confirmBrokerSignInAvailability(serverUrl, response, requester);
+    const available = await confirmBrokerSignInAvailability(serverUrl, response, requester);
+    if (available && requester === requestSelectedBrokerHealth) {
+      selectedBrokerHealthCache.set(healthUrl, Date.now() + SELECTED_BROKER_HEALTH_CACHE_TTL_MS);
+    }
+    return available;
   } catch (firstError) {
     if (!isHealthProbeTimeout(firstError)) return false;
   }
   try {
     const response = await requester(healthUrl);
-    return await confirmBrokerSignInAvailability(serverUrl, response, requester);
+    const available = await confirmBrokerSignInAvailability(serverUrl, response, requester);
+    if (available && requester === requestSelectedBrokerHealth) {
+      selectedBrokerHealthCache.set(healthUrl, Date.now() + SELECTED_BROKER_HEALTH_CACHE_TTL_MS);
+    }
+    return available;
   } catch {
     return false;
   }

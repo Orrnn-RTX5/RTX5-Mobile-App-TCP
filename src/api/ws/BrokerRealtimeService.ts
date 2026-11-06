@@ -571,7 +571,11 @@ class BrokerRealtimeService {
       normalizeEventName(record.status);
 
     let accepted = false;
-    const isMetricsFrame = channel.startsWith('metrics.') || isMetricsEventName(eventName);
+    const isMetricsFrame =
+      channel.startsWith('metrics.') ||
+      channel.startsWith('account.') ||
+      isMetricsEventName(eventName) ||
+      eventName.startsWith('account');
     if (
       !isMetricsFrame &&
       (channel.startsWith('positions.') ||
@@ -588,7 +592,9 @@ class BrokerRealtimeService {
       accepted = this.handleAccount(
         dataRecord ?? record,
         identity,
-        eventName === 'metrics.update',
+        eventName === 'metrics.update' ||
+          eventName === 'account.snapshot' ||
+          eventName === 'account_snapshot',
       ) || accepted;
     }
 

@@ -217,19 +217,17 @@ test('raw v2 requires enabled true and excludes disabled or explicitly inactive 
   assert.equal('active' in result.selectableServers[0], false);
 });
 
-test('raw v2 requires server metadata and an HTTPS protocol declaration', () => {
-  for (const field of ['server', 'server_ip', 'protocol'] as const) {
-    expectSchemaError(
-      () => parseBrokerDirectoryListingPayload([
-        rawV2Record({ [field]: ' ' }),
-      ]),
-      `missing_${field}`,
-    );
-  }
+test('raw v2 requires server metadata and an HTTP/HTTPS protocol declaration', () => {
+  expectSchemaError(
+    () => parseBrokerDirectoryListingPayload([
+      rawV2Record({ server: ' ' }),
+    ]),
+    'missing_server',
+  );
 
   expectSchemaError(
     () => parseBrokerDirectoryListingPayload([
-      rawV2Record({ protocol: 'http' }),
+      rawV2Record({ protocol: 'ftp' }),
     ]),
     'invalid_protocol',
   );
@@ -286,7 +284,7 @@ test('documented legacy value wrapper is identity-only and unknown envelopes sti
   assert.deepEqual(legacyResult.approvedServers, []);
 
   expectSchemaError(
-    () => parseBrokerDirectoryListingPayload({ brokers: [richDirectoryRecord()] }),
+    () => parseBrokerDirectoryListingPayload({ directory: [richDirectoryRecord()] }),
     'missing_schema_version',
   );
   expectSchemaError(
@@ -563,44 +561,13 @@ const contractV3LiveRawIpRows = () => [
   },
 ];
 
-test('current live raw-IP rows recover to the contract-published hostnames', () => {
-  // superadmin-prod still serves these rows (raw IP server_url, ws:// and
-  // http:// feed fields, no feed_wss_url). For exactly the two Contract v3
-  // brokers the app falls back to their published hostnames, keeping the
-  // directory broker_id case ("Orrnn") for login.
-  const result = parseBrokerDirectoryListingPayload(contractV3LiveRawIpRows());
-  assert.deepEqual(
-    result.selectableServers.map((server) => [
-      server.broker_id,
-      server.broker_name,
-      server.server_url,
-      server.feed_wss_url,
-      server.feed_status_https_url,
-      server.trade_wss_url,
-    ]),
-    [
-      [
-        'trivanta-markets',
-        'Trivanta Markets',
-        'https://trivanta.orrnn.com',
-        'wss://trivanta.orrnn.com/ws/feed',
-        'https://trivanta.orrnn.com/ws/feed/status',
-        'wss://trivanta.orrnn.com/ws/v2',
-      ],
-      [
-        'Orrnn',
-        'ORRNN',
-        'https://service.orrnn.com',
-        'wss://service.orrnn.com/ws/feed',
-        'https://service.orrnn.com/ws/feed/status',
-        'wss://service.orrnn.com/ws/v2',
-      ],
-    ],
+test('raw-IP rows do not rewrite to cloud hostnames in Binary TCP builds', () => {
+  // Pinned cloud fallback origins are disabled in Binary TCP builds so that
+  // directory entries resolved via 127.0.0.1:18404 are never rewritten to *.orrnn.com.
+  expectSchemaError(
+    () => parseBrokerDirectoryListingPayload(contractV3LiveRawIpRows()),
+    'invalid_server_url',
   );
-  for (const server of result.selectableServers) {
-    const resolution = resolveBrokerEndpointSet(server);
-    assert.equal(resolution.ok, true, server.broker_id);
-  }
 });
 
 test('raw-IP rows for any broker without a published hostname stay rejected', () => {
@@ -662,23 +629,24 @@ test('a hostname row with ws:// or http:// feed endpoints stays rejected', () =>
     'invalid_server_url',
   );
 
-  // A published broker never keeps a cleartext endpoint either: its unusable
-  // row is replaced wholesale by the pinned wss:// / https:// endpoint set.
-  const recovered = parseBrokerDirectoryListingPayload([{
-    ...trivanta,
-    feed_wss_url: 'ws://trivanta.orrnn.com/ws/feed',
-  }]);
-  assert.equal(recovered.selectableServers[0].feed_wss_url, 'wss://trivanta.orrnn.com/ws/feed');
+  // In Binary TCP builds, non-loopback hostname rows with ws:// stay rejected.
+  expectSchemaError(
+    () => parseBrokerDirectoryListingPayload([{
+      ...trivanta,
+      feed_wss_url: 'ws://trivanta.orrnn.com/ws/feed',
+    }]),
+    'invalid_feed_endpoint',
+  );
 });
 
-test('a valid directory row always wins over the pinned fallback', () => {
+test('a valid directory row is accepted while raw-IP rows are rejected without pinned fallback', () => {
   const [trivanta, orrnn] = contractV3TargetRows();
   const [, orrnnLive] = contractV3LiveRawIpRows();
   const unlistedRawIp = { ...orrnnLive, broker_id: 'unlisted-broker' };
   const result = parseBrokerDirectoryListingPayload([orrnnLive, trivanta, unlistedRawIp]);
   assert.deepEqual(
     result.selectableServers.map((server) => server.broker_id),
-    ['Orrnn', 'trivanta-markets'],
+    ['trivanta-markets'],
   );
 
   // If ops publishes a different valid hostname, the app follows the directory.

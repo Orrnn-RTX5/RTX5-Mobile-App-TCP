@@ -71,43 +71,28 @@ export function buildContractSizeMap(
   }, {});
 }
 
+/**
+ * Returns the sum of backend-reported position P/L values without recalculating
+ * profit from frontend ticks or contract sizes.
+ */
 export function calculateFloatingPnlFromTick({
   positions,
-  tick,
-  contractSizes,
+  tick: _tick,
+  contractSizes: _contractSizes,
 }: {
   positions: PositionItem[];
   tick: EquityTick;
   contractSizes?: Record<string, number>;
 }): number {
-  const tickSymbol = normalizeSymbolKey(tick.symbol);
-  const currentPrice = Number(tick.price);
-  if (!tickSymbol || !Number.isFinite(currentPrice)) {
-    return positions.reduce((sum, position) => sum + (Number(position.pnl) || 0), 0);
-  }
-
-  return positions.reduce((sum, position) => {
-    const positionSymbol = normalizeSymbolKey(position.symbol);
-    if (positionSymbol !== tickSymbol) {
-      return sum + (Number(position.pnl) || 0);
-    }
-
-    const openPrice = Number(position.openPrice);
-    const volume = Number(position.volume);
-    if (!Number.isFinite(openPrice) || !Number.isFinite(volume)) {
-      return sum + (Number(position.pnl) || 0);
-    }
-
-    const direction = position.side === 'sell' ? -1 : 1;
-    const contractSize = contractSizes?.[positionSymbol] ?? DEFAULT_CONTRACT_SIZE;
-    // Calibrated factor → account-currency P&L (FX + contract size baked in).
-    const factor = derivePriceToPnlFactor(position, direction, volume, contractSize);
-    const priceProfit = (currentPrice - openPrice) * direction * factor;
-    // Net floating P/L = live price profit + fixed open-position charges.
-    return sum + priceProfit + netPositionCharges(position);
-  }, 0);
+  void _tick;
+  void _contractSizes;
+  return positions.reduce((sum, position) => sum + (Number(position.pnl) || 0), 0);
 }
 
+/**
+ * Preserves backend-reported floating P/L and balance without frontend tick
+ * recalculation.
+ */
 export function calculateEquityFromTick({
   balance,
   positions,
@@ -123,6 +108,6 @@ export function calculateEquityFromTick({
   const floating = calculateFloatingPnlFromTick({ positions, tick, contractSizes });
   return {
     floating,
-    equity: numericBalance + floating,
+    equity: numericBalance,
   };
 }

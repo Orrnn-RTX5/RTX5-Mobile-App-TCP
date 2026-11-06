@@ -18,49 +18,44 @@ const basePosition: PositionItem = {
   openTime: '2026.01.01 00:00:00',
 };
 
-test('calculateEquityFromTick applies buy direction and contract size', () => {
+test('calculateEquityFromTick returns backend position pnl without frontend tick calculation', () => {
   const result = calculateEquityFromTick({
     balance: 1000,
-    positions: [basePosition],
+    positions: [{ ...basePosition, pnl: 100 }],
     tick: { symbol: 'EURUSD', price: 1.101 },
     contractSizes: buildContractSizeMap([{ symbol: 'EURUSD', contractSize: 100000 }]),
   });
 
   assert.equal(Math.round(result.floating), 100);
-  assert.equal(Math.round(result.equity), 1100);
+  assert.equal(Math.round(result.equity), 1000);
 });
 
-test('calculateEquityFromTick applies sell direction', () => {
+test('calculateEquityFromTick preserves sell position backend pnl without frontend tick calculation', () => {
   const result = calculateEquityFromTick({
     balance: 1000,
-    positions: [{ ...basePosition, side: 'sell' }],
+    positions: [{ ...basePosition, side: 'sell', pnl: 100 }],
     tick: { symbol: 'EURUSD', price: 1.099 },
   });
 
   assert.equal(Math.round(result.floating), 100);
-  assert.equal(Math.round(result.equity), 1100);
+  assert.equal(Math.round(result.equity), 1000);
 });
 
-test('calculateEquityFromTick preserves other-symbol pnl values', () => {
+test('calculateEquityFromTick sums backend pnl values across symbols', () => {
   const result = calculateEquityFromTick({
     balance: 1000,
     positions: [
-      basePosition,
+      { ...basePosition, pnl: 100 },
       { ...basePosition, id: '2', symbol: 'GBPUSD', pnl: 25 },
     ],
     tick: { symbol: 'EURUSD', price: 1.101 },
   });
 
   assert.equal(Math.round(result.floating), 125);
-  assert.equal(Math.round(result.equity), 1125);
+  assert.equal(Math.round(result.equity), 1000);
 });
 
-test('calculateEquityFromTick converts to account currency via the calibrated snapshot factor (USDJPY)', () => {
-  // USD account, USDJPY long. Quote currency is JPY, so a raw
-  // (price-open)*volume*contractSize would yield JPY, not USD. The server
-  // snapshot pnl (332 USD at price 150.50, open 150.00) calibrates the
-  // USD-per-price-unit factor = 332 / 0.50 = 664. A tick to 150.60 must give
-  // (150.60-150.00)*664 = 398.4 USD — NOT 60000 (the uncoverted JPY figure).
+test('calculateEquityFromTick preserves backend USDJPY snapshot pnl directly', () => {
   const usdJpy: PositionItem = {
     ...basePosition,
     symbol: 'USDJPY',
@@ -76,11 +71,11 @@ test('calculateEquityFromTick converts to account currency via the calibrated sn
     contractSizes: buildContractSizeMap([{ symbol: 'USDJPY', contractSize: 100000 }]),
   });
 
-  assert.equal(Number(result.floating.toFixed(1)), 398.4);
-  assert.equal(Number(result.equity.toFixed(1)), 1398.4);
+  assert.equal(Number(result.floating.toFixed(1)), 332);
+  assert.equal(Number(result.equity.toFixed(1)), 1000);
 });
 
-test('calculateEquityFromTick keeps swap and commission in net floating pnl for the ticked symbol', () => {
+test('calculateEquityFromTick returns backend net pnl without re-adding swap or commission', () => {
   const result = calculateEquityFromTick({
     balance: 1000,
     positions: [
@@ -96,5 +91,5 @@ test('calculateEquityFromTick keeps swap and commission in net floating pnl for 
   });
 
   assert.equal(Number(result.floating.toFixed(2)), 98);
-  assert.equal(Number(result.equity.toFixed(2)), 1098);
+  assert.equal(Number(result.equity.toFixed(2)), 1000);
 });

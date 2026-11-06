@@ -136,23 +136,27 @@ const SceneContent = memo(function SceneContent({
       <BottomTabBarHeightContext.Provider
         value={tabBarPosition === 'bottom' ? tabBarHeight : 0}
       >
-        <Screen
-          focused={navigationFocused}
-          route={descriptor.route}
-          navigation={descriptor.navigation}
-          headerShown={headerShown}
-          headerStatusBarHeight={headerStatusBarHeight}
-          headerTransparent={headerTransparent}
-          header={header({
-            layout,
-            route: descriptor.route,
-            navigation:
-              descriptor.navigation as BottomTabNavigationProp<ParamListBase>,
-            options: descriptor.options,
-          })}
-        >
-          {descriptor.render()}
-        </Screen>
+        {headerShown === false ? (
+          descriptor.render()
+        ) : (
+          <Screen
+            focused={navigationFocused}
+            route={descriptor.route}
+            navigation={descriptor.navigation}
+            headerShown={headerShown}
+            headerStatusBarHeight={headerStatusBarHeight}
+            headerTransparent={headerTransparent}
+            header={header({
+              layout,
+              route: descriptor.route,
+              navigation:
+                descriptor.navigation as BottomTabNavigationProp<ParamListBase>,
+              options: descriptor.options,
+            })}
+          >
+            {descriptor.render()}
+          </Screen>
+        )}
       </BottomTabBarHeightContext.Provider>
     </View>
   );
@@ -181,7 +185,9 @@ const SceneLayer = memo(function SceneLayer({
       ]}
       pointerEvents={visualFocused ? 'auto' : 'none'}
     >
-      <ThemeModeRenderPriorityContext.Provider value="retained">
+      <ThemeModeRenderPriorityContext.Provider
+        value={visualFocused ? 'immediate' : 'retained'}
+      >
         <SceneContent
           descriptor={descriptor}
           navigationFocused={navigationFocused}
@@ -599,41 +605,7 @@ const expoTabRouterOverride: NonNullable<
 > = (original) => ({
   ...original,
   getStateForAction(state, action, options) {
-    if (action.target && action.target !== state.key) {
-      return null;
-    }
-
-    if (action.type !== 'REPLACE') {
-      return original.getStateForAction(state, action, options);
-    }
-
-    let nextState = original.getStateForAction(
-      state,
-      { ...action, type: 'JUMP_TO' },
-      options,
-    );
-
-    if (
-      !nextState ||
-      nextState.index === undefined ||
-      !Array.isArray(nextState.history)
-    ) {
-      return null;
-    }
-
-    if (nextState.index !== 0) {
-      const previousIndex = nextState.index - 1;
-      nextState = {
-        ...nextState,
-        key: `${nextState.key}-replace`,
-        history: [
-          ...nextState.history.slice(0, previousIndex),
-          ...nextState.history.slice(nextState.index),
-        ],
-      };
-    }
-
-    return nextState;
+    return original.getStateForAction(state, action, options);
   },
 });
 

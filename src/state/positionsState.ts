@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OPEN_POSITIONS_SESSION_CACHE_STORAGE_PREFIX } from './sessionCacheStorage';
 import type { PositionItem } from '../domain/tradingModels';
+import { getAccountSummary, hasRecentAccountSummarySync } from '../api/account';
 import { positionsApi, type ClosedPosition, type Position } from '../api/positions';
 import { appQueryClient } from './providers/AppProviders';
 import { resolveTradingLoginString } from './tradingLogin';
@@ -1114,6 +1115,9 @@ export const usePositionsState = create<PositionsState>((set, get) => ({
         }
 
         const mutationBarrierSnapshot = capturePositionsMutationBarrier();
+        if (!hasRecentAccountSummarySync(normalizedLogin)) {
+          void getAccountSummary(normalizedLogin).catch(() => undefined);
+        }
         // Contract v3: GET /positions/{login} returns ALL open positions; no
         // limit/offset paging (the old limit=50 default hid positions).
         const data = await positionsApi.getPositions(login);
